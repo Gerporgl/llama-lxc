@@ -55,6 +55,9 @@ Alternatively, you can create the LXC container yourself, or perhaps to start wi
 
 The script can also be run after the CT was created manually in Proxmox UI, it will update the existing LXC config to set all required permissions and devices required. Make sure you specify the correct container ID that you want to have updated or created!
 
+The default network setup uses vmbr0, no vlan (or default), and DHCP for ipv4 and ipv6, default host DNS and no firewall.
+Once started, the llama-swap UI should be available at http://x.x.x.x:8080 as well as all the other actual inference endpoints and proxyed endpoints. Where x.x.x.x is your new dynamically allocated ip address. This address should be visible in proxmox UI, almost immediately after the container started. Otherwise you can adjust the container to suit you need, if you like hardcoding ip addresses statically for example.
+
 **Manual Setup**
 ```bash
 ./build.sh      # Only build the container image
