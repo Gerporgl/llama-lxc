@@ -2,7 +2,7 @@
 
 A containerized service for managing multiple models with automatic model swapping, designed for AMD GPUs with ROCm support, and specifically designed for Proxmox VE Containers.
 
-It runs with systemd init so that you can SSH to the container, retain logs using journalctl and access it though Proxmox built-in tty console. Basic (traditional "Docker") containers with normal app entrypoint in Proxmox are often not ideal as stdout logs are lost.
+It runs with systemd init so that you can SSH to the container, retain logs using journalctl and access it through Proxmox built-in tty console. Basic (traditional "Docker") containers with normal app entrypoint in Proxmox are often not ideal as stdout logs are lost.
 
 This solution greatly improves the sysadmin user experience, and is probably the closest you can get to a bare-metal setup while using Proxmox for other VMs hosting usage, and you don't have to deal with hardware virtualization with iommu and sr-iov, etc. and it should still be secure enough since the container is running in unprivileged mode without nesting, with all uid/gid mapped differently as is the case with lxc (except for the gpu device, which is needed)
 
@@ -39,7 +39,7 @@ Pre requisites:
    - The container is designed to use a second volume to store models and data
    - You need to create this additonal volume in Proxmox after the initial container was created (so don't start it right way!), and mount it under /root/data
    - With the default configs, models are designed to be stored under /root/data/models.
-   - The main partition is relatively small (16GB), so you will run out of space soon if you don't create an additional volume. 128GB or more is recommended... depending on your usage, however it is also easy to grow the zfs size afterware withotu even restarting anything.
+   - The main partition is relatively small (16GB), so you will run out of space soon if you don't create an additional volume. 128GB or more is recommended... depending on your usage, however it is also easy to grow the zfs size afterware without even restarting anything.
    - The use of a separate volume makes it easy to keep models and your config when you update the base image.
    - The config is stored under /root/data/config.yaml, so it should be carried over when you update the base image as well
    - The root folder contains a default config (/root/config.default.yaml), and if no config exists under /root/data or the volume is empty, it will be automatically copied before llama-swap starts.
