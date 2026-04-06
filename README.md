@@ -88,7 +88,7 @@ Llama-Swap runs as a systemd container with GPU passthrough, allowing you to:
 - **GPU passthrough**: Access AMD GPU devices via `/dev/kfd` and `/dev/dri`
 - **Multi-model support**: Llama, Gemma, Stable Diffusion, and more
   - This is mostly thanks to the fact we uses llama-swap: this container uses llama-swap official container image as a base, but currently also compile and adds sd-server (stable-diffusion.cpp build for ROCm) to it.
-  - The provided config.yaml example is an actual working setup on a 16GB vram AMDGPU, huggingface models should be downloaded automatically, but for stable difussion, you'll have to download the model files manually (you can find the info on stable-diffusion.cpp project under the z-image-turbo section, or try your own models)
+  - The provided config.yaml example is an actual working setup on a 16GB vram AMDGPU, huggingface models should be downloaded automatically, but for stable diffusion, you'll have to download the model files manually (you can find the info on stable-diffusion.cpp project under the z-image-turbo section, or try your own models)
 
 ## Key Features
 
