@@ -29,7 +29,7 @@ Or if you don't want to build the entire Dockerfile locally, you can use run.sh 
 ./run.sh
 ```
 
-Note: unforutnatly the base llama-swap rocm image is pretty big, around 7+ GB, so you may need to be patient while it downloads, depending on your internet connection.
+Note: unfortunately, the llama-swap rocm image is pretty big, around 7+ GB, so you may need to be patient while it downloads, depending on your internet connection.
 
 Running the script above will ask for the containers root password (can be blank/empty), and will create and mount a local ./data folder on your computer.
 
