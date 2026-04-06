@@ -13,17 +13,12 @@ if [ ! $IMAGE_NAME ]; then
     IMAGE_NAME=ghcr.io/gerporgl/llama-lxc:latest
 fi
 
-# Remove existing config file if existing,
-# since this run script is mostly for testing the container
-# Changes should be made in config.yaml in the repo root folder instead
-rm -f data/config.yaml
-
 podman=$(podman -v 2>/dev/null | grep -c -i podman)
 if [ "$podman" == "1" ]; then
     # This is to keep the user id the same as in the container for the mounted file system,
     # so the steam user is id 1000, and may be the same as the local user, so that is easier to manage
     # There are others ways of doing that, and this is optional
-	opts="--userns=keep-id --device /dev/kfd --device /dev/dri"
+	opts="--userns=keep-id"
 	command=podman
 	echo "You have podman installed"
     podman rm -fi $CONTAINER_NAME
@@ -56,6 +51,7 @@ $command create --rm -it \
     -p 0.0.0.0:2222:22 \
     -p 0.0.0.0:8888:8080 \
     $opts \
+    --device /dev/kfd --device /dev/dri \
     -v `pwd`/data:/root/data \
     --name $CONTAINER_NAME \
     $IMAGE_NAME
