@@ -24,18 +24,31 @@ This solution greatly improves the sysadmin user experience, and is probably the
 ./build_and_run.sh
 ```
 
-This will ask for the containers root password (can be blank/empty), and will create and mount a local ./data folder on your computer.
+Or if you don't want to build the entire Dockerfile locally, you can use run.sh directly which will by default download a pre-build image from ghcr.io:
+```bash
+./run.sh
+```
+
+Note: unforutnatly the base llama-swap rocm image is pretty big, around 7+ GB, so you may need to be patient while it downloads, depending on your internet connection.
+
+Running the script above will ask for the containers root password (can be blank/empty), and will create and mount a local ./data folder on your computer.
 
 After startup, the container should automatically have started llama-swap, you can check the journalctl logs to verify if was started successfully.
+
+On a typical podman linux desktop setup, where you already have a working amdgpu compatible with ROCm, everything should hopefully work out of the box, as long as your distro kernel is recent enough (my distro uses zen kernels always up to date, so I am uncertain how it works if it is too old). No special user or group id mapping should be needed with podman (unlike proxmox lxc, explained in the next section)
+
+There are some tricks also to enable offically unsupported amd gpus, using HSA_OVERRIDE_GFX_VERSION env in lllam-swap.service. You can see a commented example HSA_OVERRIDE_GFX_VERSION=10.3.0 (for a gfx1030 gpu, like RX 6750 XT) which worked pretty well overall for ROCm and llama-server.
 
 **Option 2: Proxmox Deployment**
 
 Pre requisites:
- - First of all, you will need to push your image somewhere to your own OCI registry (it may not be on ghcr.io yet)
+ - First of all, you will need to push your image somewhere to your own OCI registry (update: some pre-build images are now available on github ghcr.io)
  - In Proxmox VE, you need to go to your storage (i.e.: local), then under CT Templates, click "Pull from OCI Registry"
  - Enter the URL of the registry where this image is located
    - Pro tip: You can also use "Distribution registry" running as a CT container on your Proxmox local network as a simple solution for convenience along with registry-ui
- - Proxmox should download it locally
+   - Alternatively, you can now download the image from ghcr.io/gerporgl/llama-lxc:latest
+     - Important note: The current tagging scheme does not really tell you which upstream version of llama-swap and sd-server you'll get from ghcr.io, but you can be certain that it was the latest rocm build at the time the image was pushed to ghcr.io... however, for that reason, you may want to build your own image locally afterward, as I may not often refresh the build on ghcr.io, unless I find some way to automate that.
+ - Proxmox should then download the container image locally
  - Also, very important!:
    - The container is designed to use a second volume to store models and data
    - You need to create this additonal volume in Proxmox after the initial container was created (so don't start it right way!), and mount it under /root/data
