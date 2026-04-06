@@ -1,0 +1,13 @@
+[Unit]
+Description=Llama-swap Initial Preparation Script
+After=network.target
+
+[Service]
+WorkingDirectory=/root
+ExecStart=/root/prepare.sh
+Type=oneshot
+RemainAfterExit=yes
+User=root
+
+[Install]
+WantedBy=multi-user.target
