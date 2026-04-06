@@ -70,6 +70,9 @@ RUN apt update && apt install -y git cmake ninja-build clang && \
     apt remove -y git cmake ninja-build clang && \
     apt autoremove -y && \
     apt clean && \
+    mkdir -p /opt/stable-diffusion.cpp && \
+    mv ../LICENSE /opt/stable-diffusion.cpp/LICENSE && \
+    chmod 0000 /opt/stable-diffusion.cpp/LICENSE && \
     rm -rf \
     /root/stable-diffusion.cpp \
     /var/lib/apt/lists/* \
@@ -80,14 +83,14 @@ RUN apt update && apt install -y git cmake ninja-build clang && \
 # Also add a clean wrapper that allow the usage of llama-server
 # system wide, without having to make its library available system wide
 # in case they would conflict with other tools such as sd-server, etc.
-RUN rm -f /app/*.md /app/config* && \
+RUN mkdir -p /opt/llama/llama-swap && \
+    mv /app/LICENSE.md /opt/llama/llama-swap/LICENSE.md && \
+    chmod 0000 /opt/llama/llama-swap/LICENSE.md && \
+    rm -f /app/*.md /app/config* && \
     mkdir -p /opt/llama/llama-swap && \
-    mkdir -p /opt/stable-diffusion.cpp && \
     mv /app/llama-swap /usr/local/bin && \
     mv /app/* /opt/llama/ && \
-    rm -fr /app && \
-    curl -L https://raw.githubusercontent.com/leejet/stable-diffusion.cpp/refs/heads/master/LICENSE -o /opt/stable-diffusion.cpp/LICENSE && chmod 0000 /opt/stable-diffusion.cpp/LICENSE && \
-    curl -L https://raw.githubusercontent.com/mostlygeek/llama-swap/refs/heads/main/LICENSE.md -o /opt/llama/llama-swap/LICENSE.md && chmod 0000 /opt/llama/llama-swap/LICENSE.md
+    rm -fr /app
 
 ADD --chmod=0755 container-files/llama-server-wrapper.sh /usr/local/bin/llama-server
 
