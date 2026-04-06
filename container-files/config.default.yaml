@@ -1,21 +1,3 @@
-# add this modeline for validation in vscode
-# yaml-language-server: $schema=https://raw.githubusercontent.com/mostlygeek/llama-swap/refs/heads/main/config-schema.json
-#
-# llama-swap YAML configuration example
-# -------------------------------------
-#
-# 💡 Tip - Use an LLM with this file!
-# ====================================
-#  This example configuration is written to be LLM friendly. Try
-#  copying this file into an LLM and asking it to explain or generate
-#  sections for you.
-# ====================================
-
-# Usage notes:
-# - Below are all the available configuration options for llama-swap.
-# - Settings noted as "required" must be in your configuration file
-# - Settings noted as "optional" can be omitted
-
 # healthCheckTimeout: number of seconds to wait for a model to be ready to serve requests
 # - optional, default: 120
 # - minimum value is 15 seconds, anything less will be set to this value
@@ -87,7 +69,6 @@ globalTTL: 1800
 #   - env macros are substituted first, before regular macros
 #   - if the env var is not set, config loading will fail with an error
 macros:
-  # Example of a multi-line macro
   "llama-base-url": http://127.0.0.1:${PORT}
 
   "latest-llama": >
@@ -97,24 +78,7 @@ macros:
   "models_dir": "${env.HOME}/data/models"
   "default_args": "--ctx-size ${default_ctx} --models_dir ${models_dir}"
 
-# apiKeys: require an API key when making requests to inference endpoints
-# - optional, default: []
-# - when empty (the default) authorization will not be checked as llama-swap is default-allow
-# - each key is a non-empty string
-
-# models: a dictionary of model configurations
-# - required
-# - each key is the model's ID, used in API requests
-# - model settings have default values that are used if they are not defined here
-# - the model's ID is available in the ${MODEL_ID} macro, also available in macros defined above
-# - below are examples of the all the settings a model can have
 models:
-#  "qwen2.5":
-#    proxy: "${llama-base-url}"
-#    cmd: >
-#      ${latest-llama}
-#      ${default_args}
-#      -hf bartowski/Qwen2.5-0.5B-Instruct-GGUF:Q4_K_M
   "qwen2.5-coder:1.5b-base":
     macros:
       "default_ctx": 1500
@@ -150,29 +114,22 @@ models:
       --diffusion-fa
       --offload-to-cpu
       --cfg-scale 1.0
-      -v
       --diffusion-model /root/data/models/z-image-turbo/z_image_turbo-Q6_K.gguf
       --vae /root/data/models/z-image-turbo/ae.safetensors
       --llm /root/data/models/z-image-turbo/Qwen3-4B-Instruct-2507-Q5_K_M.gguf
-#      --height 512 --width 512
 
-# NOTE: the example below uses model names that are not defined above for demonstration purposes
 groups:
-  # group1 works the same as the default behaviour of llama-swap where only one model is allowed
-  # to run a time across the whole llama-swap instance
   "group1":
     # swap: controls the model swapping behaviour in within the group
     # - optional, default: true
     # - true : only one model is allowed to run at a time
     # - false: all models can run together, no swapping
     swap: true
-
     # exclusive: controls how the group affects other groups
     # - optional, default: true
     # - true: causes all other groups to unload when this group runs a model
     # - false: does not affect other groups
     exclusive: false
-
     # members references the models defined above
     # required
     members:
