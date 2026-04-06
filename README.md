@@ -15,6 +15,7 @@ This solution greatly improves the sysadmin user experience, and is probably the
 - Proxmox VE (for Proxmox deployment)
   - This is the intended way of deploying this solution
   - Note: Most likely Requires Proxmox VE 9.1.7+ updated to latest kernel and firmware ("no subcription" or "test" may be needed), to properly support ROCm 7.2.1 and above on gfx1200 hardware
+  - There is no need to install ROCm or anything special on the host for this to work, simply updating to the latest kernel and firmware packages seems sufficient
 
 ### How to use this container
 
