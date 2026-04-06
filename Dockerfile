@@ -81,10 +81,14 @@ RUN apt update && apt install -y git cmake ninja-build clang && \
 # system wide, without having to make its library available system wide
 # in case they would conflict with other tools such as sd-server, etc.
 RUN rm -f /app/*.md /app/config* && \
-    mkdir -p /opt/llama && \
+    mkdir -p /opt/llama/llama-swap && \
+    mkdir -p /opt/stable-diffusion.cpp && \
     mv /app/llama-swap /usr/local/bin && \
     mv /app/* /opt/llama/ && \
-    rm -fr /app
+    rm -fr /app && \
+    curl -L https://raw.githubusercontent.com/leejet/stable-diffusion.cpp/refs/heads/master/LICENSE -o /opt/stable-diffusion.cpp/LICENSE && chmod 0000 /opt/stable-diffusion.cpp/LICENSE && \
+    curl -L https://raw.githubusercontent.com/mostlygeek/llama-swap/refs/heads/main/LICENSE.md -o /opt/llama/llama-swap/LICENSE.md && chmod 0000 /opt/llama/llama-swap/LICENSE.md
+
 ADD --chmod=0755 container-files/llama-server-wrapper.sh /usr/local/bin/llama-server
 
 RUN echo "LLAMA_ARG_HOST=0.0.0.0" >> /etc/environment
@@ -96,11 +100,7 @@ ADD container-files/llama-swap.service /etc/systemd/system/
 ADD container-files/config.default.yaml /root
 RUN mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
     systemctl enable llama-swap.service && \
-    systemctl enable prepare-llama.service && \
-    groupadd -g 993 render_host && \
-    usermod -aG render_host root && \
-    usermod -aG video root
-
+    systemctl enable prepare-llama.service
 
 STOPSIGNAL SIGRTMIN+3
 
