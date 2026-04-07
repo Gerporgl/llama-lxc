@@ -235,19 +235,28 @@ generate_config() {
         fi
     done < "$conf_file"
 
-    if(( video_gid < render_gid)); then
+    # Hard coded for now, these (must!) match what we created in 
+    # our Dockerfile
+    video_gid_ct=555
+    render_gid_ct=777
+
+    if(( video_gid_ct < render_gid_ct)); then
         low_gid=$video_gid
         high_gid=$render_gid
+        low_gid_ct=$video_gid_ct
+        high_gid_ct=$render_gid_ct
     else
         low_gid=$render_gid
         high_gid=$video_gid
+        low_gid_ct=$render_gid_ct
+        high_gid_ct=$video_gid_ct
     fi
 
-    low_count=${low_gid}
-    mid_start=$((low_gid + 1))
+    low_count=${low_gid_ct}
+    mid_start=$((low_gid_ct + 1))
     mid_start_ct=$((mid_start + 100000))
-    mid_count=$((high_gid - mid_start))
-    high_start=$((high_gid + 1))
+    mid_count=$((high_gid_ct - mid_start))
+    high_start=$((high_gid_ct + 1))
     high_start_ct=$((high_start + 100000))
     high_count=$((65536 - high_start))
 
@@ -258,16 +267,15 @@ lxc.cgroup2.devices.allow: c ${kfd_major_num}:* rwm
 lxc.mount.entry: /dev/kfd dev/kfd none bind,optional,create=file
 lxc.mount.entry: /dev/dri dev/dri none bind,optional,create=dir
 lxc.idmap: u 0 100000 65536
-lxc.idmap: g 0 100000 ${low_gid}
-lxc.idmap: g ${low_gid} ${low_gid} 1
+lxc.idmap: g 0 100000 ${low_count}
+lxc.idmap: g ${low_gid_ct} ${low_gid} 1
 lxc.idmap: g ${mid_start} ${mid_start_ct} ${mid_count}
-lxc.idmap: g ${high_gid} ${high_gid} 1
+lxc.idmap: g ${high_gid_ct} ${high_gid} 1
 lxc.idmap: g ${high_start} ${high_start_ct} ${high_count}
 EOF
-    
     # Copy file to final location
     cp "$temp_file" "$conf_file"
-    rm $temp_file
+    rm -f $temp_file
     log_info "Configuration written to $conf_file"
 }
 
