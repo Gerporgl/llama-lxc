@@ -81,12 +81,12 @@ macros:
 models:
   "qwen2.5-coder:1.5b-base":
     macros:
-      "default_ctx": 1500
+      "default_ctx": 3072
     proxy: "${llama-base-url}"
     cmd: >
       ${latest-llama}
       ${default_args}
-      -hf QuantFactory/Qwen2.5-Coder-1.5B-GGUF:Q5_K_M
+      -hf Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M
   "Qwopus3.5-9B-v3-GGUF:Q5_K_S":
     proxy: "${llama-base-url}"
     cmd: >
