@@ -28,6 +28,7 @@ set -euo pipefail
 # Configuration
 DEFAULT_IMAGE="/var/lib/vz/template/cache/llama-lxc_latest.tar"
 DEFAULT_STORAGE="local-zfs"
+ZFS_POOL_NAME="rpool"
 DEFAULT_BRIDGE="vmbr0"
 DEFAULT_HOSTNAME_PATTERN="CT-llama-swap"
 CONF_DIR="/etc/pve/lxc"
@@ -369,6 +370,32 @@ confirm_creation() {
     fi
 }
 
+optimize_container() {
+    local CTID=$1
+    echo "==================================================================================="
+    log_info "The following optimizations only set ZFS options for your container subvolumes"
+    log_warn "If you don't have zfs, say NO"
+    log_warn "If your main local-zfs pool is not called $ZFS_POOL_NAME or mounted under /$ZFS_POOL_NAME, say NO..."
+    log_info "This will assume you have a volume 0 (rootfs) and volume 1 for model data"
+    read -p "Apply ZFS performance optimizations for AI models? (y/n): " zfs_tune
+    if [[ $zfs_tune == "y" ]]; then
+        if [ -d "/$ZFS_POOL_NAME/data/subvol-$CTID-disk-1" ]; then
+            zfs set xattr=sa atime=off $ZFS_POOL_NAME/data/subvol-$CTID-disk-1
+            zfs set recordsize=1M $ZFS_POOL_NAME/data/subvol-$CTID-disk-1
+            log_info "ZFS optimizations applied to data volume."
+        else
+            echo "$ZFS_POOL_NAME/data/subvol-$CTID-disk-1 does not exists. You should rerun this script after you created it."
+        fi
+        if [ -d "/$ZFS_POOL_NAME/data/subvol-$CTID-disk-0" ]; then
+            zfs set xattr=sa $ZFS_POOL_NAME/data/subvol-$CTID-disk-0
+            log_info "ZFS optimizations applied to rootfs volume."
+        else
+            echo "$ZFS_POOL_NAME/data/subvol-$CTID-disk-0 does not exists! This is unexpected."
+        fi
+    fi
+
+}
+
 # Main execution
 main() {
     log_info "=== Llama ROCm LXC Container Setup ==="
@@ -418,7 +445,8 @@ main() {
 
     fi
     update_container "$1" "$RENDER_DEVICES_VAR"
-    
+    optimize_container "$1"
+
     log_info "=== Setup Complete ==="
 }
 

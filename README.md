@@ -71,6 +71,8 @@ The script can also be run after the CT was created manually in Proxmox UI, it w
 The default network setup uses vmbr0, no vlan (or default), and DHCP for ipv4 and ipv6, default host DNS and no firewall.
 Once started, the llama-swap UI should be available at http://x.x.x.x:8080 as well as all the other actual inference endpoints and proxyed endpoints. Where x.x.x.x is your new dynamically allocated ip address. This address should be visible in proxmox UI, almost immediately after the container started. Otherwise you can adjust the container to suit you need, if you like hardcoding ip addresses statically for example.
 
+The script now has an experimental feature at the end to optimize the zfs flags, to set recordsize to 1M, xattr=sa and atime=off on the data volume (disk 1 or mp0), ans set zattr=sa on the rootfs. The zfs must be called rpool and mounted under /rpool currently, so this is optional if it doesn't work for you (you can answer no, or modify the script variables).
+
 **Manual Setup**
 ```bash
 ./build.sh      # Only build the container image
