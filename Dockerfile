@@ -90,7 +90,10 @@ RUN mkdir -p /opt/llama/llama-swap && \
     mkdir -p /opt/llama/llama-swap && \
     mv /app/llama-swap /usr/local/bin && \
     mv /app/* /opt/llama/ && \
-    rm -fr /app
+    rm -fr /app && \
+    groupadd -g 993 render_host && \
+    usermod -aG render_host root && \
+    usermod -aG video root
 
 ADD --chmod=0755 container-files/llama-server-wrapper.sh /usr/local/bin/llama-server
 
