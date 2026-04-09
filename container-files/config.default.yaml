@@ -1,17 +1,19 @@
+# add this modeline for validation in vscode
+yaml-language-server: $schema=https://raw.githubusercontent.com/mostlygeek/llama-swap/refs/heads/main/config-schema.json
+#
+# llama-swap YAML configuration example
+# -------------------------------------
+#
 # healthCheckTimeout: number of seconds to wait for a model to be ready to serve requests
 # - optional, default: 120
 # - minimum value is 15 seconds, anything less will be set to this value
+# This may have to include the time to download the models for the first time
+# so a bigger value may be needed.
+healthCheckTimeout: 600
 
 # logLevel: sets the logging value
 # - optional, default: info
 # - Valid log levels: debug, info, warn, error
-
-# logTimeFormat: enables and sets the logging timestamp format
-# - optional, default (disabled): ""
-# - Valid values: "", "ansic", "unixdate", "rubydate", "rfc822", "rfc822z",
-#   "rfc850", "rfc1123", "rfc1123z", "rfc3339", "rfc3339nano", "kitchen",
-#   "stamp", "stampmilli", "stampmicro", and "stampnano".
-# - For more info, read: https://pkg.go.dev/time#pkg-constants
 
 # logToStdout: controls what is logged to stdout
 # - optional, default: "proxy"
@@ -31,6 +33,7 @@ logToStdout: "both"
 # captureBuffer: how many MBs to allocate for storing request/response captures
 # - optional, default: 10
 # - set to 0 to disable
+captureBuffer: 100
 
 # startPort: sets the starting port number for the automatic ${PORT} macro.
 # - optional, default: 5800
@@ -43,7 +46,7 @@ logToStdout: "both"
 # - when true, a stream of loading messages will be sent to the client in the
 #   reasoning field so chat UIs can show that loading is in progress.
 # - see #366 for more details
-sendLoadingState: true
+sendLoadingState: false
 
 # includeAliasesInList: present aliases within the /v1/models OpenAI API listing
 # - optional, default: false
@@ -69,77 +72,112 @@ globalTTL: 1800
 #   - env macros are substituted first, before regular macros
 #   - if the env var is not set, config loading will fail with an error
 macros:
-  "llama-base-url": http://127.0.0.1:${PORT}
+  "model-url": http://127.0.0.1:${PORT}
 
-  "latest-llama": >
+  "llama": >
     llama-server
     --port ${PORT}
-  "default_ctx": 65536
+  "sd": >
+    sd-server
+    --listen-port ${PORT}
+  "default_ctx": 32768
   "models_dir": "${env.HOME}/data/models"
-  "default_args": "--ctx-size ${default_ctx} --models_dir ${models_dir}"
+  "sd_models_dir": "${models_dir}/sd"
+  "default_llama_args": "--ctx-size ${default_ctx} --models_dir ${models_dir}"
+
+# models: a dictionary of model configurations
+# - required
+# - each key is the model's ID, used in API requests
+# - model settings have default values that are used if they are not defined here
+# - the model's ID is available in the ${MODEL_ID} macro, also available in macros defined above
+# - below are examples of the all the settings a model can have
 
 models:
-  "qwen2.5-coder:1.5b-base":
+  "qwen2.5-coder-1.5b-base":
     macros:
       "default_ctx": 3072
-    proxy: "${llama-base-url}"
+    proxy: "${model-url}"
     cmd: >
-      ${latest-llama}
-      ${default_args}
+      ${llama}
+      ${default_llama_args}
       -hf Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M
-  "Qwopus3.5-9B-v3-GGUF:Q5_K_S":
-    proxy: "${llama-base-url}"
+  "Qwen2.5-Coder-7B":
+    proxy: "${model-url}"
     cmd: >
-      ${latest-llama}
-      ${default_args}
+      ${llama}
+      ${default_llama_args}
+      -hf Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q8_0
+  "Qwen2.5-Coder-14B":
+    proxy: "${model-url}"
+    cmd: >
+      ${llama}
+      ${default_llama_args}
+      -hf Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q5_K_M
+  "Qwopus3.5-9B-v3":
+    proxy: "$model-url}"
+    cmd: >
+      ${llama}
+      ${default_llama_args}
       -hf Jackrong/Qwopus3.5-9B-v3-GGUF:Q5_K_S
-  "gemma-4-E4B-it-GGUF:Q5_K_M":
-    proxy: "${llama-base-url}"
+  "Qwopus3.5-27B-v3":
+    proxy: "${model-url}"
     cmd: >
-      ${latest-llama}
-      ${default_args}
+      ${llama}
+      ${default_llama_args}
+      -hf Jackrong/Qwopus3.5-27B-v3-GGUF:Q2_K
+  "gemma-4-E4B":
+    proxy: "$model-url}"
+    cmd: >
+      ${llama}
+      ${default_llama_args}
       -hf unsloth/gemma-4-E4B-it-GGUF:Q5_K_M
-  "gemma-4-26B-A4B-it-GGUF:UD-IQ2_M":
-    proxy: "${llama-base-url}"
+  "gemma-4-26B-A4B":
+    proxy: "${model-url}"
     cmd: >
-      ${latest-llama}
-      ${default_args}
+      ${llama}
+      ${default_llama_args}
       -hf unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ2_M
   "Z-Image-Turbo":
-    proxy: "http://127.0.0.1:${PORT}"
+    proxy: "${model-url}"
     checkEndpoint: /
-    cmd: |
-      sd-server
-      --listen-port ${PORT}
+    cmd: >
+      ${sd}
+      --diffusion-model ${sd_models_dir}/z_image_turbo-Q6_K.gguf
+      --vae ${sd_models_dir}/flux1-dev.ae.safetensors
+      --llm ${sd_models_dir}/Qwen3-4B-2507-Instruct-Uncensored-HauhauCS-Aggressive-Q6_K.gguf
       --diffusion-fa
-      --offload-to-cpu
       --cfg-scale 1.0
-      --diffusion-model /root/data/models/z-image-turbo/z_image_turbo-Q6_K.gguf
-      --vae /root/data/models/z-image-turbo/ae.safetensors
-      --llm /root/data/models/z-image-turbo/Qwen3-4B-Instruct-2507-Q5_K_M.gguf
+  "Z-Image":
+    proxy: "${model-url}"
+    checkEndpoint: /
+    cmd: >
+      ${sd}
+      --diffusion-model ${sd_models_dir}/z-image-Q6_K.gguf
+      --vae ${sd_models_dir}/flux1-dev.ae.safetensors
+      --llm ${sd_models_dir}/Qwen3-4B-2507-Instruct-Uncensored-HauhauCS-Aggressive-Q6_K.gguf
+      --diffusion-fa
+      --cfg-scale 5.0
+  "Chroma":
+    proxy: "${model-url}"
+    checkEndpoint: /
+    cmd: >
+      ${sd}
+      --diffusion-model  ${sd_models_dir}/chroma-unlocked-v50-Q5_0.gguf
+      --vae ${sd_models_dir}/flux1-dev.ae.safetensors
+      --t5xxl ${sd_models_dir}/t5xxl-Q5_0.gguf
+      --sampling-method euler
+      --cfg-scale 4.0
+#      --chroma-disable-dit-mask # Although it is documented to use this, it crashes with "buffer not set" error when generating an image
 
+
+# This persistent model can be used in continue.dev, for autocomplete
+# so we don't want to unload it if it is used
+# It must be small enough to fit in vram with any of the models above
 groups:
-  "group1":
-    # swap: controls the model swapping behaviour in within the group
-    # - optional, default: true
-    # - true : only one model is allowed to run at a time
-    # - false: all models can run together, no swapping
-    swap: true
-    # exclusive: controls how the group affects other groups
-    # - optional, default: true
-    # - true: causes all other groups to unload when this group runs a model
-    # - false: does not affect other groups
-    exclusive: false
-    # members references the models defined above
-    # required
-    members:
-      - "Qwopus3.5-9B-v3-GGUF:Q5_K_S"
-      - "gemma-4-E4B-it-GGUF:Q5_K_M"
-      - "gemma-4-26B-A4B-it-GGUF:UD-IQ2_M"
-      - "Z-Image-Turbo"
-  "group2":
+  "persistent-group":
     swap: false
     exclusive: false
+    persistent: true
     members:
-      - "qwen2.5-coder:1.5b-base"
+      - "qwen2.5-coder-1.5b-base"
 
