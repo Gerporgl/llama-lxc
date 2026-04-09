@@ -1,4 +1,4 @@
-FROM ghcr.io/mostlygeek/llama-swap:rocm as llama-lxc
+FROM ghcr.io/mostlygeek/llama-swap:v199-rocm-b8684  as llama-lxc
 
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
