@@ -1,13 +1,10 @@
 # Use the llama.cpp base rocm image as a builder for stable-diffusion
 FROM ghcr.io/ggml-org/llama.cpp:server-rocm as stable-diffusion
 
-# Build and install stable-diffusion.cpp (sd-server and sd-cli)
-# Specifically for rocm hip and gfx1200 (otherwise change it bellow)
-# All rocm dependencies are already provided in the base image
-# as part of the "small" 6 GB base image size...
-# From that points of view, adding sd-server and sd-cli is a small
-# size increase and is worth it.
-RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
+# Build stable-diffusion.cpp (sd-server and sd-cli)
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
     curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
     apt update && apt install -y git cmake clang ninja-build \
     zip \
@@ -131,7 +128,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get autoremove -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy the sable-diffusion binaries that we compiled in a previous stage
+# Copy the stable-diffusion binaries that we compiled in a previous stage
 COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
 
 RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
