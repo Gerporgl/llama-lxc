@@ -126,7 +126,8 @@ RUN mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
 
 # Grab the latest release of llama.cpp from their release binaries
 # it is often newer than the base image...
-RUN cd /root && \
+RUN rm -rf /app && \
+    cd /root && \
     export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name') && \
     echo llama_build=$llama_build && \
     curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-rocm-7.2-x64.tar.gz && \
