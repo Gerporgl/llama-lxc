@@ -77,8 +77,14 @@ macros:
   "llama": >
     llama-server
     --port ${PORT}
+  "llama-vulkan": >
+    /opt/llama/vulkan/llama-server
+    --port ${PORT}
   "sd": >
     sd-server
+    --listen-port ${PORT}
+  "sd-vulkan": >
+    sd-server-vulkan
     --listen-port ${PORT}
   "default_ctx": 32768
   "models_dir": "${env.HOME}/data/models"

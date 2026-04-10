@@ -116,6 +116,9 @@ Edit `/root/data/config.yaml` to define:
 
 Check the default bundled config for a good start: [config.default.yaml](container-files/config.default.yaml)
 
+NOTE: The image now include also llama vulkan binaries as well as sd-server vulkan binaries. This is EXPERIMENTAL, you can try them by using the llama-vulkan and sd-vulkan macros in the default config.
+As many have mentioned on the internet, vulkan is faster by a noticeable amount for token generation. However it does not generate exactly the same thing based on my tests, especially for image generation in sd-server it was easy to notice some differences. Your mileage may vary.
+
 Full config example from llama-swap project: [config.example.yaml](https://github.com/mostlygeek/llama-swap/blob/main/config.example.yaml)
 
 After saving the config, llama-swap should automatically reload it, there should be no need to restart the service via systemctl.

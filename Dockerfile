@@ -64,7 +64,7 @@ RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc
     curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
     apt update && apt install -y git cmake clang ninja-build \
     zip \
-    vulkan-sdk \
+    vulkan-sdk libvulkan1 vulkan-tools mesa-vulkan-drivers \
     nodejs npm && \
     curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
     . /root/.bashrc && \
@@ -130,6 +130,10 @@ RUN rm -rf /app && \
     cd /root && \
     export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name') && \
     echo llama_build=$llama_build && \
+    mkdir -p /opt/llama/vulkan && \
+    curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
+    tar -xzvf llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
+    mv ./llama-$llama_build/* /opt/llama/vulkan && \
     curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-rocm-7.2-x64.tar.gz && \
     tar -xzvf llama-$llama_build-bin-ubuntu-rocm-7.2-x64.tar.gz && \
     mv ./llama-$llama_build/* /opt/llama/ && \
