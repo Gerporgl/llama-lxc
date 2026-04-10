@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 WorkingDirectory=/root
-ExecStart=/root/prepare.sh
+ExecStart=/usr/local/bin/prepare.sh
 Type=oneshot
 RemainAfterExit=yes
 User=root

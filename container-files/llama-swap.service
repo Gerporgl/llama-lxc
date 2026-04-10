@@ -10,7 +10,7 @@ Environment=LLAMA_CACHE=/root/data/models
 #Environment=HSA_OVERRIDE_GFX_VERSION=10.3.0
 Environment=ROCR_VISIBLE_DEVICES=0
 
-ExecStart=/usr/local/bin/llama-swap --config /root/data/config.yaml --watch-config
+ExecStart=/root/data/llama-swap-launcher
 RestartSec=2s
 
 Restart=always
