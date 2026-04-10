@@ -1,4 +1,49 @@
-FROM ghcr.io/ggml-org/llama.cpp:server-rocm as llama-lxc
+# Use the llama.cpp base rocm image as a builder for stable-diffusion
+FROM ghcr.io/ggml-org/llama.cpp:server-rocm as stable-diffusion
+
+# Build and install stable-diffusion.cpp (sd-server and sd-cli)
+# Specifically for rocm hip and gfx1200 (otherwise change it bellow)
+# All rocm dependencies are already provided in the base image
+# as part of the "small" 6 GB base image size...
+# From that points of view, adding sd-server and sd-cli is a small
+# size increase and is worth it.
+RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
+    curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
+    apt update && apt install -y git cmake clang ninja-build \
+    zip \
+    vulkan-sdk \
+    nodejs npm && \
+    curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
+    . /root/.bashrc && \
+    git clone --recursive https://github.com/leejet/stable-diffusion.cpp && \
+    mkdir stable-diffusion.cpp/build && \
+    cd stable-diffusion.cpp/build && \
+    export GFX_NAME=gfx1200 && \
+    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$GFX_NAME -DAMDGPU_TARGETS=$GFX_NAME -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
+    cmake --build . --config Release && \
+    cp ./bin/* /usr/local/bin/ && \
+    cd .. && rm build -R && \
+    mkdir build && cd build && \
+    cmake .. -G "Ninja" -DSD_VULKAN=ON  && \
+    cmake --build . --config Release && \
+    cp ./bin/sd-server /usr/local/bin/sd-server-vulkan && \
+    cp ./bin/sd-cli /usr/local/bin/sd-cli-vulkan && \
+    apt remove -y vulkan-sdk && \
+    apt remove -y git cmake ninja-build clang zip nodejs npm && \
+    apt autoremove -y && \
+    apt clean && \
+    mkdir -p /opt/stable-diffusion.cpp && \
+    mv ../LICENSE /opt/stable-diffusion.cpp/LICENSE && \
+    chmod 0000 /opt/stable-diffusion.cpp/LICENSE && \
+    rm -rf \
+    /root/stable-diffusion.cpp \
+    /var/lib/apt/lists/* \
+    /var/tmp/* \
+    /tmp/* \
+    /root/.local/share/pnpm
+
+# Use bare ubuntu 24.04 and install rocm from amd
+FROM ubuntu:24.04 as llama-lxc 
 
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
@@ -54,51 +99,46 @@ USER root
 
 WORKDIR /root
 
-# Build and install stable-diffusion.cpp (sd-server and sd-cli)
-# Specifically for rocm hip and gfx1200 (otherwise change it bellow)
-# All rocm dependencies are already provided in the base image
-# as part of the "small" 6 GB base image size...
-# From that points of view, adding sd-server and sd-cli is a small
-# size increase and is worth it.
+# Install "minimum" dependencies (4GB?), register ROCm 7.2.1 repository, and install runtime + tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg2 \
+    ca-certificates \
+    && mkdir -p /etc/apt/keyrings \
+    \
+    # 1. Download and install the official AMD GPG key
+    && curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
+    \
+    # 2. Register the ROCm 7.2.1 repository for Ubuntu 22.04 (Jammy)
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2.1 noble main" \
+
+    | tee /etc/apt/sources.list.d/rocm.list \
+    \
+    # 3. Pin the repository to prioritize official AMD packages
+    && echo 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' \
+    | tee /etc/apt/preferences.d/rocm-pin-600 \
+    \
+    # 4. Install only what's needed for llama-server and monitoring
+    && apt-get update && apt-get install -y --no-install-recommends \
+    rocm-hip-runtime \
+    rocm-smi \
+    rocminfo \
+    hipblas \
+    rocblas \
+    \
+    # 5. Cleanup to keep image slim
+    && apt-get purge -y gnupg2 \
+    && apt-get autoremove -y \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy the sable-diffusion binaries that we compiled in a previous stage
+COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
+
 RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
     curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
-    apt update && apt install -y git cmake clang ninja-build \
-    zip \
-    vulkan-sdk libvulkan1 vulkan-tools mesa-vulkan-drivers \
-    nodejs npm && \
-    curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
-    . /root/.bashrc && \
-    git clone --recursive https://github.com/leejet/stable-diffusion.cpp && \
-    mkdir stable-diffusion.cpp/build && \
-    cd stable-diffusion.cpp/build && \
-    export GFX_NAME=gfx1200 && \
-    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$GFX_NAME -DAMDGPU_TARGETS=$GFX_NAME -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
-    cmake --build . --config Release && \
-    cp ./bin/* /usr/local/bin/ && \
-    cd .. && rm build -R && \
-    mkdir build && cd build && \
-    cmake .. -G "Ninja" -DSD_VULKAN=ON  && \
-    cmake --build . --config Release && \
-    cp ./bin/sd-server /usr/local/bin/sd-server-vulkan && \
-    cp ./bin/sd-cli /usr/local/bin/sd-cli-vulkan && \
-    apt remove -y vulkan-sdk && \
-    apt remove -y git cmake ninja-build clang zip nodejs npm && \
-    apt autoremove -y && \
-    apt clean && \
-    mkdir -p /opt/stable-diffusion.cpp && \
-    mv ../LICENSE /opt/stable-diffusion.cpp/LICENSE && \
-    chmod 0000 /opt/stable-diffusion.cpp/LICENSE && \
-    rm -rf \
-    /root/stable-diffusion.cpp \
-    /var/lib/apt/lists/* \
-    /var/tmp/* \
-    /tmp/* \
-    /root/.local/share/pnpm
+    apt-get update && apt-get install -y libvulkan1 vulkan-tools mesa-vulkan-drivers && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Some shenanigan to make llama-swap and llama-server in more standard locations
-# Also add a clean wrapper that allow the usage of llama-server
-# system wide, without having to make its library available system wide
-# in case they would conflict with other tools such as sd-server, etc.
 RUN mkdir -p /opt/llama/llama-swap && \
     # Create our own expected gid for video and render
     # so that our hsot script can expect pre defined numbers
@@ -108,12 +148,12 @@ RUN mkdir -p /opt/llama/llama-swap && \
     groupadd -g 555 video_host && \
     groupadd -g 777 render_host && \
     # but also add the root user to every possible group (probably needed for podman local run)
-    usermod -aG video_host,render_host,video,render root
+    usermod -aG video_host,render_host,video,render root && \
+    echo "LLAMA_ARG_HOST=0.0.0.0" >> /etc/environment && \
+    echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf
 
 ADD --chmod=0755 container-files/llama-server-wrapper.sh /usr/local/bin/llama-server
 ADD container-files/llama-swap-launcher.sh /opt/llama/llama-swap/default-llama-swap-launcher
-
-RUN echo "LLAMA_ARG_HOST=0.0.0.0" >> /etc/environment
 
 ADD container-files/prepare-llama.service /etc/systemd/system/
 ADD --chmod=755 container-files/prepare.sh /usr/local/bin
@@ -125,7 +165,7 @@ RUN mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
     systemctl enable prepare-llama.service
 
 # Grab the latest release of llama.cpp from their release binaries
-# it is often newer than the base image...
+# It is often newer than the base image...
 RUN rm -rf /app && \
     cd /root && \
     export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name') && \
