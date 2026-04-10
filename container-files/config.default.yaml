@@ -114,7 +114,7 @@ models:
       ${default_llama_args}
       -hf Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q5_K_M
   "Qwopus3.5-9B-v3":
-    proxy: "$model-url}"
+    proxy: "${model-url}"
     cmd: >
       ${llama}
       ${default_llama_args}
@@ -126,7 +126,7 @@ models:
       ${default_llama_args}
       -hf Jackrong/Qwopus3.5-27B-v3-GGUF:Q2_K
   "gemma-4-E4B":
-    proxy: "$model-url}"
+    proxy: "${model-url}"
     cmd: >
       ${llama}
       ${default_llama_args}
