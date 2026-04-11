@@ -1,3 +1,4 @@
 data/
 data/*
 push.sh
+*_version.txt

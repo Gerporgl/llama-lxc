@@ -1,6 +1,7 @@
 # Use the llama.cpp base rocm image as a builder for stable-diffusion
-FROM ghcr.io/ggml-org/llama.cpp:server-rocm as stable-diffusion
+FROM ghcr.io/ggml-org/llama.cpp:light-rocm as stable-diffusion
 
+ARG stable_diffusion_tag=""
 # Build stable-diffusion.cpp (sd-server and sd-cli)
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
@@ -12,7 +13,9 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     nodejs npm && \
     curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
     . /root/.bashrc && \
-    git clone --recursive https://github.com/leejet/stable-diffusion.cpp && \
+#    git clone --recursive https://github.com/leejet/stable-diffusion.cpp && \
+    echo stable_diffusion_tag=${stable_diffusion_tag} && \
+    git clone --branch ${stable_diffusion_tag} --depth 1 --recursive --shallow-submodules https://github.com/leejet/stable-diffusion.cpp && \
     mkdir stable-diffusion.cpp/build && \
     cd stable-diffusion.cpp/build && \
     export GFX_NAME=gfx1200 && \
@@ -137,12 +140,10 @@ RUN mkdir -p /opt/llama/llama-swap && \
     # Create our own expected gid for video and render
     # so that our hsot script can expect pre defined numbers
     # that won't change
-    groupadd -f video && \
-    groupadd -f render && \
     groupadd -g 555 video_host && \
     groupadd -g 777 render_host && \
     # but also add the root user to every possible group (probably needed for podman local run)
-    usermod -aG video_host,render_host,video,render root && \
+    usermod -aG video_host,render_host root && \
     echo "LLAMA_ARG_HOST=0.0.0.0" >> /etc/environment && \
     echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf
 
@@ -160,9 +161,10 @@ RUN mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
 
 # Grab the latest release of llama.cpp from their release binaries
 # It is often newer than the base image...
+ARG llama_build=""
 RUN rm -rf /app && \
     cd /root && \
-    export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name') && \
+#    export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name') && \
     echo llama_build=$llama_build && \
     mkdir -p /opt/llama/vulkan && \
     curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
