@@ -23,9 +23,11 @@ else
 fi
 
 export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name')
-export stable_diffusion_tag=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest | jq -r '.tag_name') && \
+#export stable_diffusion_tag=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest | jq -r '.tag_name') && \
+export stable_diffusion_tag=master-560-e8323ca
 echo $llama_build > llama_version.txt
 echo $stable_diffusion_tag > sd_version.txt
+
 echo llama_build=$llama_build
 echo stable_diffusion_tag=$stable_diffusion_tag
 
