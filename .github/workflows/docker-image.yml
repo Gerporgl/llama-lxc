@@ -29,7 +29,7 @@ jobs:
           echo "After cleanup:"
           df -h
     - name: Build the Docker image
-      run: CT_TOOL=docker ./build.sh
+      run: CT_TOOL=docker ./build.sh pull
     - name: Log in to registry
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
     - name: Push image

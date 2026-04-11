@@ -12,11 +12,14 @@ if [[ "$CT_TOOL" == "" ]]; then
 	fi
 fi
 
-if [[ "$1" == "pull" ]]; then
-	echo "Pulling new base image..."
-	extra_arg="--no-cache"
+
+if [[ "$CT_TOOL" == "podman " ]]; then
+	extra_args="--pull=newer"
 else
-	extra_arg=""
+	if [[ "$1" == "pull" ]]; then
+		echo "Force pulling new base images..."
+		extra_args="--pull"
+	fi
 fi
 
 export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name')
@@ -31,8 +34,7 @@ if [[ "$llama_build" == "" || "$llama_build" == "stable_diffusion_tag" ]]; then
 	exit 1
 fi
 
-DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_arg \
-	--pull=newer \
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
 	--target llama-lxc \
 	--build-arg llama_build=$llama_build \
 	--build-arg stable_diffusion_tag=$stable_diffusion_tag \
