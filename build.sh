@@ -2,14 +2,15 @@
 
 set -e
 
-podman=$(podman -v 2>/dev/null | grep -c -i podman)
-if [ "$podman" == "1" ]; then
-	command=podman
-else
-	command=docker
-	echo "You are NOT using podman! Good luck!"
+if [[ "$CT_TOOL" == "" ]]; then
+	podman=$(podman -v 2>/dev/null | grep -c -i podman)
+	if [ "$podman" == "1" ]; then
+		CT_TOOL=podman
+	else
+		CT_TOOL=docker
+		echo "You are NOT using podman! Good luck!"
+	fi
 fi
-
 
 if [[ "$1" == "pull" ]]; then
 	echo "Pulling new base image..."
@@ -30,7 +31,7 @@ if [[ "$llama_build" == "" || "$llama_build" == "stable_diffusion_tag" ]]; then
 	exit 1
 fi
 
-DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 $command build $extra_arg \
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_arg \
 	--pull=newer \
 	--target llama-lxc \
 	--build-arg llama_build=$llama_build \
