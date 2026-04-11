@@ -12,7 +12,9 @@ fi
 
 if [[ "$1" == "pull" ]]; then
 	echo "Pulling new base image..."
-	$command pull ghcr.io/mostlygeek/llama-swap:rocm
+	extra_arg="--no-cache"
+else
+	extra_arg=""
 fi
 
-DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 $command build --target llama-lxc -t llama-lxc:latest .
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 $command build $extra_arg --target llama-lxc -t llama-lxc:latest .
