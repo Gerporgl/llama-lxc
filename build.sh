@@ -17,4 +17,6 @@ else
 	extra_arg=""
 fi
 
-DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 $command build $extra_arg --target llama-lxc -t llama-lxc:latest .
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 $command build $extra_arg --target rocm-runtimes -t rocm:runtimes .
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 $command build $extra_arg --target rocm-dev -t rocm:dev .
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 $command build $extra_arg --target stable-diffusion -t stable-diffusion:latest .

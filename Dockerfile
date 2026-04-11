@@ -1,5 +1,32 @@
+FROM ubuntu:24.04 as rocm-base
+
+WORKDIR /root
+
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    apt update && apt install -y curl wget sudo libatomic1 libquadmath0 gnupg2 && \
+    mkdir --parents --mode=0755 /etc/apt/keyrings && \
+    wget https://repo.amd.com/rocm/packages/gpg/rocm.gpg -O - | \
+    gpg --dearmor | tee /etc/apt/keyrings/amdrocm.gpg > /dev/null && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/amdrocm.gpg] https://repo.amd.com/rocm/packages/ubuntu2404 stable main" \
+    | tee /etc/apt/sources.list.d/rocm.list && \
+    cat /etc/apt/sources.list.d/rocm.list && \
+    apt update && apt upgrade -y
+
+FROM rocm-base as rocm-runtimes
+RUN apt install -y amdrocm7.12-gfx120x && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+FROM rocm-runtimes as rocm-dev
+
+WORKDIR /root
+
+RUN apt update && apt install -y amdrocm-core-dev7.12-gfx120x && \
+    apt-get autoremove -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Use the llama.cpp base rocm image as a builder for stable-diffusion
-FROM ghcr.io/ggml-org/llama.cpp:server-rocm as stable-diffusion
+FROM rocm-dev as stable-diffusion
 
 # Build stable-diffusion.cpp (sd-server and sd-cli)
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
