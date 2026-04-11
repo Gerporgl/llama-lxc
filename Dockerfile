@@ -97,7 +97,7 @@ USER root
 WORKDIR /root
 
 # Install "minimum" dependencies (4GB?), register ROCm 7.2.1 repository, and install runtime + tools
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     gnupg2 \
     ca-certificates \
@@ -127,9 +127,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y gnupg2 \
     && apt-get autoremove -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Copy the stable-diffusion binaries that we compiled in a previous stage
-COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
 
 RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
     curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
@@ -179,6 +176,8 @@ RUN rm -rf /app && \
 # Get llama-swap binary directly from their public image
 # It seems simpler that way, and no extra delay for getting the latest llama-cpp, which is the most important
 COPY --from=ghcr.io/mostlygeek/llama-swap:unified-vulkan /usr/local/bin/llama-swap /usr/local/bin
+# Copy the stable-diffusion binaries that we compiled in a previous stage
+COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
 
 STOPSIGNAL SIGRTMIN+3
 
