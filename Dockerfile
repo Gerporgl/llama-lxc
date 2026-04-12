@@ -1,14 +1,19 @@
-# Use the llama.cpp base rocm image as a builder for stable-diffusion
-FROM ghcr.io/ggml-org/llama.cpp:light-rocm as stable-diffusion
-
+# We now use the AMD rocm base dev image as a builder for stable-diffusion
+FROM docker.io/rocm/dev-ubuntu-24.04:7.2 as stable-diffusion
 ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
+# We also compile the vulkan version, since it is fast to compile and has a small binary size
+# and may be a viable option in some use cases. Combining both vulkan and rocm at the same time
+# could lead to GPU crash needing a full power off and on in my experience... so use with caution, ymmv
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
     curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
     apt update && apt install -y git cmake clang ninja-build \
     zip \
+    hip-dev \
+    hipblas-dev \
+    rocm-dev \
     vulkan-sdk \
     nodejs npm && \
     curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
@@ -34,8 +39,10 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     cmake --build . --config Release && \
     cp ./bin/sd-server /usr/local/bin/sd-server-vulkan && \
     cp ./bin/sd-cli /usr/local/bin/sd-cli-vulkan && \
-    apt remove -y vulkan-sdk && \
-    apt remove -y git cmake ninja-build clang zip nodejs npm && \
+    apt remove -y vulkan-sdk git cmake ninja-build clang zip nodejs npm \
+    hip-dev \
+    hipblas-dev \
+    rocm-dev && \
     apt autoremove -y && \
     apt clean && \
     mkdir -p /opt/stable-diffusion.cpp && \
@@ -144,6 +151,7 @@ RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc
 
 # Grab the latest release of llama.cpp from their release binaries
 # It is often newer than the base image...
+# Also grab the vulkan version, just like stable-diffusion, in case some prefer vulkan
 ARG llama_build
 RUN rm -rf /app && \
     cd /root && \
