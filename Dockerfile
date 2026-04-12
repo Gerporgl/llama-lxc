@@ -169,13 +169,14 @@ RUN mkdir -p /opt/llama/llama-swap && \
 COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
 #RUN apt update && apt install -y unzip
 #ARG stable_diffusion_tag
-#RUN echo $stable_diffusion_tag && \
-#    url=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/tags/${stable_diffusion_tag} | jq -r '.assets[] | select(.browser_download_url | test("Linux.*rocm")) | .browser_download_url') && \
-#    curl -sL $url > sd.zip && \
-#    ls -l && \
-#    mkdir sd && unzip sd.zip && \
-#    mv ./sd/sd* /usr/local/bin/ && mv ./sd/LICENSE.txt /opt/llama/stable-diffusion/ && rm -rf sd.zip sd
-
+#RUN echo stable_diffusion_tag=$stable_diffusion_tag && \
+    # url=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/tags/${stable_diffusion_tag} | jq -r '.assets[] | select(.browser_download_url | test("Linux.*rocm")) | .browser_download_url') && \
+    # curl -sL $url > sd.zip && \
+    # ls -l && \
+    # unzip sd.zip && \
+    # cp ./build/bin/sd-* /usr/local/bin/ && \
+    # cp ./build/bin/libstable-diffusion.so /usr/lib/ && \
+    # rm -rf build sd.zip
 
 RUN \
     # Create our own expected gid for video and render
