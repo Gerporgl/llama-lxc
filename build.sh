@@ -36,8 +36,6 @@ echo llama_build=$llama_build
 echo stable_diffusion_tag=$stable_diffusion_tag
 echo llama_swap_build=$llama_swap_build
 
-#echo "${llama_swap_build//[[:alpha:]]}"
-
 if [[ "$llama_build" == "" || "$llama_build" == "stable_diffusion_tag" ]]; then
 	echo "ERROR: Unable to get the latest builds info!"
 	exit 1
