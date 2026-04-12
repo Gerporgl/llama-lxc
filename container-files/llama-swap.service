@@ -5,7 +5,6 @@ After=prepare-llama.service
 Requires=prepare-llama.service
 
 [Service]
-#WorkingDirectory=/app
 Environment=LLAMA_CACHE=/root/data/models
 #Environment=HSA_OVERRIDE_GFX_VERSION=10.3.0
 Environment=ROCR_VISIBLE_DEVICES=0
