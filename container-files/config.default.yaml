@@ -144,6 +144,14 @@ models:
       ${default_llama_args}
       -hf unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ2_M
   "Z-Image-Turbo":
+    # New default timeouts cause issues with image generation
+    # that take more than 1 minute. You need to set this for every model potentially...
+    timeouts:
+      idleConn: 0
+      connect: 0
+      responseHeader: 0
+      tlsHandshake: 0
+      expectContinue: 0
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >
@@ -154,6 +162,14 @@ models:
       --diffusion-fa
       --cfg-scale 1.0
   "Z-Image":
+    # New default timeouts cause issues with image generation
+    # that take more than 1 minute. You need to set this for every model potentially...
+    timeouts:
+      idleConn: 0
+      connect: 0
+      responseHeader: 0
+      tlsHandshake: 0
+      expectContinue: 0
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >
@@ -164,6 +180,14 @@ models:
       --diffusion-fa
       --cfg-scale 5.0
   "Chroma":
+    # New default timeouts cause issues with image generation
+    # that take more than 1 minute. You need to set this for every model potentially...
+    timeouts:
+      idleConn: 0
+      connect: 0
+      responseHeader: 0
+      tlsHandshake: 0
+      expectContinue: 0
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >

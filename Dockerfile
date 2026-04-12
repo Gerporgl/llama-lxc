@@ -1,7 +1,7 @@
 # Use the llama.cpp base rocm image as a builder for stable-diffusion
 FROM ghcr.io/ggml-org/llama.cpp:light-rocm as stable-diffusion
 
-ARG stable_diffusion_tag=""
+ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
@@ -167,7 +167,7 @@ RUN mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
 
 # Grab the latest release of llama.cpp from their release binaries
 # It is often newer than the base image...
-ARG llama_build=""
+ARG llama_build
 RUN rm -rf /app && \
     cd /root && \
 #    export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name') && \
@@ -181,9 +181,13 @@ RUN rm -rf /app && \
     mv ./llama-$llama_build/* /opt/llama/ && \
     rm -fr ./llama-$llama_build*
 
-# Get llama-swap binary directly from their public image
+# Get llama-swap binary directly from their github release download
 # It seems simpler that way, and no extra delay for getting the latest llama-cpp, which is the most important
-COPY --from=ghcr.io/mostlygeek/llama-swap:v199-vulkan-b8720 /app/llama-swap /usr/local/bin
+ARG llama_swap_build
+RUN curl -sL https://github.com/mostlygeek/llama-swap/releases/download/v${llama_swap_build}/llama-swap_${llama_swap_build}_linux_amd64.tar.gz > llama-swap.tar.gz && \
+    mkdir llama-swap && tar -xzvf llama-swap.tar.gz -C ./llama-swap && \
+    mv ./llama-swap/llama-swap /usr/local/bin/ && mv ./llama-swap/LICENSE.md /opt/llama/llama-swap/ && rm -rf llama-swap.tar.gz llama-swap
+
 # Copy the stable-diffusion binaries that we compiled in a previous stage
 COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
 
