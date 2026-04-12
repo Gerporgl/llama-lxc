@@ -146,12 +146,6 @@ models:
   "Z-Image-Turbo":
     # New default timeouts cause issues with image generation
     # that take more than 1 minute. You need to set this for every model potentially...
-    timeouts:
-      idleConn: 0
-      connect: 0
-      responseHeader: 0
-      tlsHandshake: 0
-      expectContinue: 0
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >
@@ -164,12 +158,6 @@ models:
   "Z-Image":
     # New default timeouts cause issues with image generation
     # that take more than 1 minute. You need to set this for every model potentially...
-    timeouts:
-      idleConn: 0
-      connect: 0
-      responseHeader: 0
-      tlsHandshake: 0
-      expectContinue: 0
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >
@@ -182,12 +170,6 @@ models:
   "Chroma":
     # New default timeouts cause issues with image generation
     # that take more than 1 minute. You need to set this for every model potentially...
-    timeouts:
-      idleConn: 0
-      connect: 0
-      responseHeader: 0
-      tlsHandshake: 0
-      expectContinue: 0
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >
