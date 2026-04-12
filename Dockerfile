@@ -24,8 +24,8 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     cd .. && \
     mkdir stable-diffusion.cpp/build && \
     cd stable-diffusion.cpp/build && \
-    export GFX_NAME=gfx1200 && \
-    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$GFX_NAME -DAMDGPU_TARGETS=$GFX_NAME -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
+    export GFX_NAME="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032" && \
+    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=amdclang -DCMAKE_CXX_COMPILER=amdclang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$GFX_NAME -DAMDGPU_TARGETS=$GFX_NAME -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
     cmake --build . --config Release && \
     cp ./bin/* /usr/local/bin/ && \
     cd .. && rm build -R && \
@@ -167,6 +167,15 @@ RUN mkdir -p /opt/llama/llama-swap && \
 
 # Copy the stable-diffusion binaries that we compiled in a previous stage
 COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
+#RUN apt update && apt install -y unzip
+#ARG stable_diffusion_tag
+#RUN echo $stable_diffusion_tag && \
+#    url=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/tags/${stable_diffusion_tag} | jq -r '.assets[] | select(.browser_download_url | test("Linux.*rocm")) | .browser_download_url') && \
+#    curl -sL $url > sd.zip && \
+#    ls -l && \
+#    mkdir sd && unzip sd.zip && \
+#    mv ./sd/sd* /usr/local/bin/ && mv ./sd/LICENSE.txt /opt/llama/stable-diffusion/ && rm -rf sd.zip sd
+
 
 RUN \
     # Create our own expected gid for video and render
@@ -178,7 +187,8 @@ RUN \
     # but also add the root user to every possible group (probably needed for podman local run)
     usermod -aG video_host,render_host,video,render root && \
     echo "LLAMA_ARG_HOST=0.0.0.0" >> /etc/environment && \
-    echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf
+    echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
+    echo "/opt/rocm-7.2.1/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
 
 ADD --chmod=0755 container-files/llama-server-wrapper.sh /usr/local/bin/llama-server
 ADD container-files/llama-swap-launcher.sh /opt/llama/llama-swap/default-llama-swap-launcher
