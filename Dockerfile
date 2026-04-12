@@ -144,12 +144,13 @@ RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc
 
 RUN mkdir -p /opt/llama/llama-swap && \
     # Create our own expected gid for video and render
-    # so that our hsot script can expect pre defined numbers
+    # so that our host script can expect pre defined numbers
     # that won't change
+    groupadd -g 444 render && \
     groupadd -g 555 video_host && \
     groupadd -g 777 render_host && \
     # but also add the root user to every possible group (probably needed for podman local run)
-    usermod -aG video_host,render_host root && \
+    usermod -aG video_host,render_host,video,render root && \
     echo "LLAMA_ARG_HOST=0.0.0.0" >> /etc/environment && \
     echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf
 
@@ -170,7 +171,6 @@ RUN mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
 ARG llama_build
 RUN rm -rf /app && \
     cd /root && \
-#    export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name') && \
     echo llama_build=$llama_build && \
     mkdir -p /opt/llama/vulkan && \
     curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
