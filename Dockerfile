@@ -142,7 +142,33 @@ RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc
     apt-get update && apt-get install -y libvulkan1 vulkan-tools mesa-vulkan-drivers && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Grab the latest release of llama.cpp from their release binaries
+# It is often newer than the base image...
+ARG llama_build
+RUN rm -rf /app && \
+    cd /root && \
+    echo llama_build=$llama_build && \
+    mkdir -p /opt/llama/vulkan && \
+    curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
+    tar -xzvf llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
+    mv ./llama-$llama_build/* /opt/llama/vulkan && \
+    curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-rocm-7.2-x64.tar.gz && \
+    tar -xzvf llama-$llama_build-bin-ubuntu-rocm-7.2-x64.tar.gz && \
+    mv ./llama-$llama_build/* /opt/llama/ && \
+    rm -fr ./llama-$llama_build*
+
+# Get llama-swap binary directly from their github release download
+# It seems simpler that way, and no extra delay for getting the latest llama-cpp, which is the most important
+ARG llama_swap_build
 RUN mkdir -p /opt/llama/llama-swap && \
+    curl -sL https://github.com/mostlygeek/llama-swap/releases/download/v${llama_swap_build}/llama-swap_${llama_swap_build}_linux_amd64.tar.gz > llama-swap.tar.gz && \
+    mkdir llama-swap && tar -xzvf llama-swap.tar.gz -C ./llama-swap && \
+    mv ./llama-swap/llama-swap /usr/local/bin/ && mv ./llama-swap/LICENSE.md /opt/llama/llama-swap/ && rm -rf llama-swap.tar.gz llama-swap
+
+# Copy the stable-diffusion binaries that we compiled in a previous stage
+COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
+
+RUN \
     # Create our own expected gid for video and render
     # so that our host script can expect pre defined numbers
     # that won't change
@@ -166,30 +192,6 @@ RUN mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
     systemctl enable llama-swap.service && \
     systemctl enable prepare-llama.service
 
-# Grab the latest release of llama.cpp from their release binaries
-# It is often newer than the base image...
-ARG llama_build
-RUN rm -rf /app && \
-    cd /root && \
-    echo llama_build=$llama_build && \
-    mkdir -p /opt/llama/vulkan && \
-    curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
-    tar -xzvf llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
-    mv ./llama-$llama_build/* /opt/llama/vulkan && \
-    curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-rocm-7.2-x64.tar.gz && \
-    tar -xzvf llama-$llama_build-bin-ubuntu-rocm-7.2-x64.tar.gz && \
-    mv ./llama-$llama_build/* /opt/llama/ && \
-    rm -fr ./llama-$llama_build*
-
-# Get llama-swap binary directly from their github release download
-# It seems simpler that way, and no extra delay for getting the latest llama-cpp, which is the most important
-ARG llama_swap_build
-RUN curl -sL https://github.com/mostlygeek/llama-swap/releases/download/v${llama_swap_build}/llama-swap_${llama_swap_build}_linux_amd64.tar.gz > llama-swap.tar.gz && \
-    mkdir llama-swap && tar -xzvf llama-swap.tar.gz -C ./llama-swap && \
-    mv ./llama-swap/llama-swap /usr/local/bin/ && mv ./llama-swap/LICENSE.md /opt/llama/llama-swap/ && rm -rf llama-swap.tar.gz llama-swap
-
-# Copy the stable-diffusion binaries that we compiled in a previous stage
-COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
 
 STOPSIGNAL SIGRTMIN+3
 
