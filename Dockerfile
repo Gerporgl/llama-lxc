@@ -13,9 +13,15 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     nodejs npm && \
     curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
     . /root/.bashrc && \
-#    git clone --recursive https://github.com/leejet/stable-diffusion.cpp && \
     echo stable_diffusion_tag=${stable_diffusion_tag} && \
-    git clone --branch ${stable_diffusion_tag} --depth 1 --recursive --shallow-submodules https://github.com/leejet/stable-diffusion.cpp && \
+    git clone --branch ${stable_diffusion_tag} --depth 1 https://github.com/leejet/stable-diffusion.cpp && \
+    cd stable-diffusion.cpp && \
+    # Use the supported stable-ui variant of stable-diffusion front-end
+    git clone --depth 1 https://github.com/leejet/stable-ui.git examples/server/frontend && \
+    git submodule init && \
+    git submodule sync && \
+    git submodule update --recursive --depth 1 -- ./ ':!examples/server/frontend' && \
+    cd .. && \
     mkdir stable-diffusion.cpp/build && \
     cd stable-diffusion.cpp/build && \
     export GFX_NAME=gfx1200 && \
@@ -177,7 +183,7 @@ RUN rm -rf /app && \
 
 # Get llama-swap binary directly from their public image
 # It seems simpler that way, and no extra delay for getting the latest llama-cpp, which is the most important
-COPY --from=ghcr.io/mostlygeek/llama-swap:unified-vulkan /usr/local/bin/llama-swap /usr/local/bin
+COPY --from=ghcr.io/mostlygeek/llama-swap:v199-vulkan-b8720 /app/llama-swap /usr/local/bin
 # Copy the stable-diffusion binaries that we compiled in a previous stage
 COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
 
