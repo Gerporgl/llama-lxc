@@ -1,7 +1,5 @@
 #!/bin/bash
 
-set -e
-
 if [[ "$CT_TOOL" == "" ]]; then
 	podman=$(podman -v 2>/dev/null | grep -c -i podman)
 	if [ "$podman" == "1" ]; then
@@ -11,6 +9,8 @@ if [[ "$CT_TOOL" == "" ]]; then
 		echo "You are NOT using podman! Good luck!"
 	fi
 fi
+
+set -e
 
 
 if [[ "$CT_TOOL" == "podman " ]]; then
