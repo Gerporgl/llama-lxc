@@ -41,6 +41,10 @@ if [[ "$llama_build" == "" || "$llama_build" == "stable_diffusion_tag" ]]; then
 	exit 1
 fi
 
+if [[ "$SD_GPU_TARGETS" ]];then
+	extra_args="$extra_args --build-arg SD_GPU_TARGETS=$SD_GPU_TARGETS"
+fi
+
 DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
 	--target llama-lxc \
 	--build-arg llama_build=$llama_build \

@@ -1,10 +1,13 @@
-# We now use the AMD rocm base dev image as a builder for stable-diffusion
-FROM docker.io/rocm/dev-ubuntu-24.04:7.2 as stable-diffusion
+# Use the AMD rocm base dev image as a builder for stable-diffusion
+# using version 7.2.1 instead of 7.2 makes a huge different to performance,
+# even for compiling (7.2 can take 50% more time per image step generation)
+FROM docker.io/rocm/dev-ubuntu-24.04:7.2.1 as stable-diffusion
 ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
 # We also compile the vulkan version, since it is fast to compile and has a small binary size
 # and may be a viable option in some use cases. Combining both vulkan and rocm at the same time
 # could lead to GPU crash needing a full power off and on in my experience... so use with caution, ymmv
+ARG SD_GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
@@ -18,6 +21,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     nodejs npm && \
     curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
     . /root/.bashrc && \
+    echo $SD_GPU_TARGETS && \
     echo stable_diffusion_tag=${stable_diffusion_tag} && \
     git clone --branch ${stable_diffusion_tag} --depth 1 https://github.com/leejet/stable-diffusion.cpp && \
     cd stable-diffusion.cpp && \
@@ -29,8 +33,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     cd .. && \
     mkdir stable-diffusion.cpp/build && \
     cd stable-diffusion.cpp/build && \
-    export GFX_NAME="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032" && \
-    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=amdclang -DCMAKE_CXX_COMPILER=amdclang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$GFX_NAME -DAMDGPU_TARGETS=$GFX_NAME -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
+    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$SD_GPU_TARGETS -DAMDGPU_TARGETS=$SD_GPU_TARGETS -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
     cmake --build . --config Release && \
     cp ./bin/* /usr/local/bin/ && \
     cd .. && rm build -R && \
@@ -42,7 +45,8 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     apt remove -y vulkan-sdk git cmake ninja-build clang zip nodejs npm \
     hip-dev \
     hipblas-dev \
-    rocm-dev && \
+    rocm-dev \
+    && \
     apt autoremove -y && \
     apt clean && \
     mkdir -p /opt/stable-diffusion.cpp && \
@@ -144,9 +148,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && apt-get autoremove -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
-    curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
-    apt-get update && apt-get install -y libvulkan1 vulkan-tools mesa-vulkan-drivers && \
+RUN apt-get update && apt-get install -y libvulkan1 vulkan-tools mesa-vulkan-drivers && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Grab the latest release of llama.cpp from their release binaries
