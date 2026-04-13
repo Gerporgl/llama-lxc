@@ -12,6 +12,10 @@
 # This script should be relativelly safe, it is simple overall, and makes backup of lxc conf file
 # in the current folder, and also ask confirmations before proceeding.
 #
+# Even if you set the wrong container ID, worst that can happen is to add things at the end of the config,
+# it will never destroy an existing container.
+# It is also safe to run it multiple times as it replaces knows lxc entries that are normally not present
+#
 # The only thing it really does on the host itself is to assign the root user to groups "render" and "video"
 # that is all, and create those groups if they don't already exists.
 #
