@@ -321,7 +321,7 @@ create_container() {
         $PASSWORD_OPT \
         --rootfs 16 \
         --cores 8 \
-        --memory 16384 \
+        --memory 24576 \
         --swap 0 \
         --net0 name=eth0,bridge="$DEFAULT_BRIDGE",ip=dhcp,ip6=dhcp
     
@@ -361,7 +361,7 @@ confirm_creation() {
     echo "  Hostname: $hostname"
     echo "  Image: $image"
     echo "  CPU: 8 cores"
-    echo "  Memory: 16GB Swap: 0"
+    echo "  Memory: 24GB Swap: 0"
     echo "  Storage: 16GB (rootfs)"
     echo "  SSH keys file: $authorized_keys"
     echo "  Set root password? $need_password"
