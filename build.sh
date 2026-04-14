@@ -23,6 +23,7 @@ else
 fi
 
 export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name')
+#export llama_build=b8788
 export stable_diffusion_tag=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest | jq -r '.tag_name') && \
 #export stable_diffusion_tag=master-560-e8323ca
 export llama_swap_version=$(curl -s https://api.github.com/repos/mostlygeek/llama-swap/releases/latest | jq -r '.tag_name')

@@ -1,59 +1,30 @@
 # Use the AMD rocm base dev image as a builder for stable-diffusion
 # using version 7.2.1 instead of 7.2 makes a huge different to performance,
 # even for compiling (7.2 can take 50% more time per image step generation)
-FROM docker.io/rocm/dev-ubuntu-24.04:7.2.1 as stable-diffusion
+#FROM docker.io/rocm/dev-ubuntu-24.04:7.2.1 as stable-diffusion
+FROM node:25-slim as stable-ui
 ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
 # We also compile the vulkan version, since it is fast to compile and has a small binary size
 # and may be a viable option in some use cases. Combining both vulkan and rocm at the same time
 # could lead to GPU crash needing a full power off and on in my experience... so use with caution, ymmv
 ARG SD_GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
-    curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
-    apt update && apt install -y git cmake clang ninja-build \
-    zip \
-    hip-dev \
-    hipblas-dev \
-    rocm-dev \
-    vulkan-sdk \
-    nodejs npm && \
-    curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
-    . /root/.bashrc && \
-    echo $SD_GPU_TARGETS && \
-    echo stable_diffusion_tag=${stable_diffusion_tag} && \
-    git clone --branch ${stable_diffusion_tag} --depth 1 https://github.com/leejet/stable-diffusion.cpp && \
-    cd stable-diffusion.cpp && \
+RUN apt update && apt install -y git python3 python3-venv python3-pip curl pkg-config libpixman-1-dev libcairo2-dev libpango1.0-dev && \
+    curl -fsSL https://get.pnpm.io/install.sh | ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
     # Use the supported stable-ui variant of stable-diffusion front-end
-    git clone --depth 1 https://github.com/leejet/stable-ui.git examples/server/frontend && \
-    git submodule init && \
-    git submodule sync && \
-    git submodule update --recursive --depth 1 -- ./ ':!examples/server/frontend' && \
-    cd .. && \
-    mkdir stable-diffusion.cpp/build && \
-    cd stable-diffusion.cpp/build && \
-    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$SD_GPU_TARGETS -DAMDGPU_TARGETS=$SD_GPU_TARGETS -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
-    cmake --build . --config Release && \
-    cp ./bin/* /usr/local/bin/ && \
-    cd .. && rm build -R && \
-    mkdir build && cd build && \
-    cmake .. -G "Ninja" -DSD_VULKAN=ON  && \
-    cmake --build . --config Release && \
-    cp ./bin/sd-server /usr/local/bin/sd-server-vulkan && \
-    cp ./bin/sd-cli /usr/local/bin/sd-cli-vulkan && \
-    apt remove -y vulkan-sdk git cmake ninja-build clang zip nodejs npm \
-    hip-dev \
-    hipblas-dev \
-    rocm-dev \
-    && \
+    git clone --depth 1 https://github.com/leejet/stable-ui.git && \
+    . /root/.bashrc && \
+    cd stable-ui && \
+    echo ============= install ================ && \
+    pnpm -C ./ install && \
+    echo ============= run build ================ && \
+    pnpm -C ./ run build && \
+    mkdir /dist && mv ./dist/index.html /dist && \
+    apt remove -y git python3 python3-venv python3-pip curl pkg-config libpixman-1-dev libcairo2-dev libpango1.0-dev && \
     apt autoremove -y && \
     apt clean && \
-    mkdir -p /opt/stable-diffusion.cpp && \
-    mv ../LICENSE /opt/stable-diffusion.cpp/LICENSE && \
-    chmod 0000 /opt/stable-diffusion.cpp/LICENSE && \
     rm -rf \
-    /root/stable-diffusion.cpp \
+    /root/stable-ui \
     /var/lib/apt/lists/* \
     /var/tmp/* \
     /tmp/* \
@@ -176,17 +147,21 @@ RUN mkdir -p /opt/llama/llama-swap && \
     mv ./llama-swap/llama-swap /usr/local/bin/ && mv ./llama-swap/LICENSE.md /opt/llama/llama-swap/ && rm -rf llama-swap.tar.gz llama-swap
 
 # Copy the stable-diffusion binaries that we compiled in a previous stage
-COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
-#RUN apt update && apt install -y unzip
-#ARG stable_diffusion_tag
-#RUN echo stable_diffusion_tag=$stable_diffusion_tag && \
-    # url=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/tags/${stable_diffusion_tag} | jq -r '.assets[] | select(.browser_download_url | test("Linux.*rocm")) | .browser_download_url') && \
-    # curl -sL $url > sd.zip && \
-    # ls -l && \
-    # unzip sd.zip && \
-    # cp ./build/bin/sd-* /usr/local/bin/ && \
-    # cp ./build/bin/libstable-diffusion.so /usr/lib/ && \
-    # rm -rf build sd.zip
+#COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
+RUN mkdir -p /opt/stable-ui/ && \
+    mkdir -p /opt/stable-diffusion/ && \
+    apt update && apt install -y unzip
+COPY --from=stable-ui /dist/index.html /opt/stable-ui/
+ARG stable_diffusion_tag
+ADD --chmod=755 container-files/sd-server-wrapper.sh /usr/local/bin/sd-server
+RUN echo stable_diffusion_tag=$stable_diffusion_tag && \
+    url=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/tags/${stable_diffusion_tag} | jq -r '.assets[] | select(.browser_download_url | test("Linux.*rocm")) | .browser_download_url') && \
+    curl -sL $url > sd.zip && \
+    unzip sd.zip build/bin/sd-server build/bin/sd-cli build/bin/libstable-diffusion.so && \
+    mv ./build/bin/sd-* /opt/stable-diffusion/ && \
+    ln -s /opt/stable-diffusion/sd-cli /usr/local/bin/sd-cli && \
+    cp ./build/bin/libstable-diffusion.so /usr/local/lib/ && \
+    rm -rf build sd.zip
 
 RUN \
     # Create our own expected gid for video and render
