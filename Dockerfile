@@ -1,22 +1,63 @@
-# Use the AMD rocm base dev image as a builder for stable-diffusion
-# using version 7.2.1 instead of 7.2 makes a huge different to performance,
-# even for compiling (7.2 can take 50% more time per image step generation)
-FROM docker.io/rocm/dev-ubuntu-24.04:7.2.1 as stable-diffusion
+FROM ubuntu:24.04 as rocm-base
+
+USER root
+WORKDIR /root
+ARG ROCM_VERSION=7.2.2
+# Install "minimum" dependencies (4GB?), register ROCm 7.2.2 repository, and install runtime + tools
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg2 \
+    ca-certificates \
+    && mkdir -p /etc/apt/keyrings \
+    \
+    # 1. Download and install the official AMD GPG key
+    && curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
+    \
+    # 2. Register the ROCm repository for Ubuntu 24.04
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION noble main" \
+
+    | tee /etc/apt/sources.list.d/rocm.list \
+    \
+    # 3. Pin the repository to prioritize official AMD packages
+    && echo 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' \
+    | tee /etc/apt/preferences.d/rocm-pin-600 \
+    \
+    # 4. Install only what's needed for llama-server and monitoring
+    && apt-get update && apt-get install -y --no-install-recommends \
+    rocm-hip-runtime \
+    amd-smi-lib \
+    rocminfo \
+    hipblas \
+    rocblas \
+    \
+    # 5. Cleanup to keep image slim
+    && apt-get purge -y gnupg2 \
+    && apt-get autoremove -y \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+FROM rocm-base as rocm-dev
+RUN apt update && apt install -y \
+    hip-dev \
+    hipblas-dev \
+    rocblas-dev \
+    rocm-dev \
+    rocwmma-dev
+
+FROM rocm-dev as stable-diffusion
 ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
 # We also compile the vulkan version, since it is fast to compile and has a small binary size
 # and may be a viable option in some use cases. Combining both vulkan and rocm at the same time
 # could lead to GPU crash needing a full power off and on in my experience... so use with caution, ymmv
-ARG SD_GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
     curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
     apt update && apt install -y git cmake clang ninja-build \
     zip \
-    hip-dev \
-    hipblas-dev \
-    rocm-dev \
     vulkan-sdk \
     nodejs npm && \
     curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
@@ -33,19 +74,18 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     cd .. && \
     mkdir stable-diffusion.cpp/build && \
     cd stable-diffusion.cpp/build && \
-    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$SD_GPU_TARGETS -DAMDGPU_TARGETS=$SD_GPU_TARGETS -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
+    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=amdclang -DSD_BUILD_SHARED_LIBS=ON -DCMAKE_CXX_COMPILER=amdclang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$GPU_TARGETS -DAMDGPU_TARGETS=$GPU_TARGETS -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
     cmake --build . --config Release && \
-    cp ./bin/* /usr/local/bin/ && \
+    cp ./bin/sd-server /usr/local/bin/ && \
+    cp ./bin/sd-cli /usr/local/bin/ && \
+    cp ./bin/libstable-diffusion.so /usr/local/lib/ && \
     cd .. && rm build -R && \
     mkdir build && cd build && \
-    cmake .. -G "Ninja" -DSD_VULKAN=ON  && \
+    cmake .. -G "Ninja" -DSD_VULKAN=ON -DSD_BUILD_SHARED_LIBS=ON && \
     cmake --build . --config Release && \
     cp ./bin/sd-server /usr/local/bin/sd-server-vulkan && \
     cp ./bin/sd-cli /usr/local/bin/sd-cli-vulkan && \
     apt remove -y vulkan-sdk git cmake ninja-build clang zip nodejs npm \
-    hip-dev \
-    hipblas-dev \
-    rocm-dev \
     && \
     apt autoremove -y && \
     apt clean && \
@@ -59,8 +99,39 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     /tmp/* \
     /root/.local/share/pnpm
 
-# Use bare ubuntu 24.04 and install rocm from amd
-FROM ubuntu:24.04 as llama-lxc 
+FROM rocm-dev as llama-cpp
+
+RUN apt-get update \
+    && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libssl-dev \
+    curl \
+    libgomp1
+
+WORKDIR /app
+
+ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+ARG llama_build
+RUN echo llama_build=$llama_build && \
+    git clone --branch ${llama_build} --depth 1 https://github.com/ggml-org/llama.cpp.git && \
+    cd llama.cpp && \
+    export build_int=$(echo "$llama_build" | sed 's/[[:alpha:]]//g') && \
+    HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)" \
+    cmake -S . -B build \
+        -DLLAMA_BUILD_NUMBER="$build_int" \
+        -DGGML_HIP=ON \
+        -DGGML_HIP_ROCWMMA_FATTN=ON \
+        -DAMDGPU_TARGETS="$GPU_TARGETS" \
+        -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON \
+        -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_TESTS=OFF \
+    && cmake --build build --config Release -j$(nproc) && \
+    mv /app/llama.cpp/build/bin/* /app/ && \
+    rm /app/llama.cpp -R;
+
+# Use our own rocm base and install our lxc base system and service
+FROM rocm-base as llama-lxc 
 
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
@@ -112,60 +183,8 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     cp /root/.profile /home/ubuntu/.profile && \
     cp /root/.bashrc /home/ubuntu/.bashrc 
 
-USER root
-
-WORKDIR /root
-
-# Install "minimum" dependencies (4GB?), register ROCm 7.2.1 repository, and install runtime + tools
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    curl \
-    gnupg2 \
-    ca-certificates \
-    && mkdir -p /etc/apt/keyrings \
-    \
-    # 1. Download and install the official AMD GPG key
-    && curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
-    \
-    # 2. Register the ROCm 7.2.1 repository for Ubuntu 22.04 (Jammy)
-    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/7.2.1 noble main" \
-
-    | tee /etc/apt/sources.list.d/rocm.list \
-    \
-    # 3. Pin the repository to prioritize official AMD packages
-    && echo 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' \
-    | tee /etc/apt/preferences.d/rocm-pin-600 \
-    \
-    # 4. Install only what's needed for llama-server and monitoring
-    && apt-get update && apt-get install -y --no-install-recommends \
-    rocm-hip-runtime \
-    rocm-smi \
-    rocminfo \
-    hipblas \
-    rocblas \
-    \
-    # 5. Cleanup to keep image slim
-    && apt-get purge -y gnupg2 \
-    && apt-get autoremove -y \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
 RUN apt-get update && apt-get install -y libvulkan1 vulkan-tools mesa-vulkan-drivers && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Grab the latest release of llama.cpp from their release binaries
-# It is often newer than the base image...
-# Also grab the vulkan version, just like stable-diffusion, in case some prefer vulkan
-ARG llama_build
-RUN rm -rf /app && \
-    cd /root && \
-    echo llama_build=$llama_build && \
-    mkdir -p /opt/llama/vulkan && \
-    curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
-    tar -xzvf llama-$llama_build-bin-ubuntu-vulkan-x64.tar.gz && \
-    mv ./llama-$llama_build/* /opt/llama/vulkan && \
-    curl -sLO https://github.com/ggml-org/llama.cpp/releases/download/$llama_build/llama-$llama_build-bin-ubuntu-rocm-7.2-x64.tar.gz && \
-    tar -xzvf llama-$llama_build-bin-ubuntu-rocm-7.2-x64.tar.gz && \
-    mv ./llama-$llama_build/* /opt/llama/ && \
-    rm -fr ./llama-$llama_build*
 
 # Get llama-swap binary directly from their github release download
 # It seems simpler that way, and no extra delay for getting the latest llama-cpp, which is the most important
@@ -175,18 +194,12 @@ RUN mkdir -p /opt/llama/llama-swap && \
     mkdir llama-swap && tar -xzvf llama-swap.tar.gz -C ./llama-swap && \
     mv ./llama-swap/llama-swap /usr/local/bin/ && mv ./llama-swap/LICENSE.md /opt/llama/llama-swap/ && rm -rf llama-swap.tar.gz llama-swap
 
+# Copy llama.cpp binaries that we just build in a previous stage
+COPY --from=llama-cpp /app/* /opt/llama/
+
 # Copy the stable-diffusion binaries that we compiled in a previous stage
 COPY --from=stable-diffusion /usr/local/bin/sd* /usr/local/bin/
-#RUN apt update && apt install -y unzip
-#ARG stable_diffusion_tag
-#RUN echo stable_diffusion_tag=$stable_diffusion_tag && \
-    # url=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/tags/${stable_diffusion_tag} | jq -r '.assets[] | select(.browser_download_url | test("Linux.*rocm")) | .browser_download_url') && \
-    # curl -sL $url > sd.zip && \
-    # ls -l && \
-    # unzip sd.zip && \
-    # cp ./build/bin/sd-* /usr/local/bin/ && \
-    # cp ./build/bin/libstable-diffusion.so /usr/lib/ && \
-    # rm -rf build sd.zip
+COPY --from=stable-diffusion /usr/local/lib/libstable-diffusion.so /usr/local/lib/
 
 RUN \
     # Create our own expected gid for video and render
@@ -197,9 +210,10 @@ RUN \
     groupadd -g 777 render_host && \
     # but also add the root user to every possible group (probably needed for podman local run)
     usermod -aG video_host,render_host,video,render root && \
+    echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rocm/bin\"" > /etc/environment && \
     echo "LLAMA_ARG_HOST=0.0.0.0" >> /etc/environment && \
     echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
-    echo "/opt/rocm-7.2.1/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
+    echo "/opt/rocm/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
 
 ADD --chmod=0755 container-files/llama-server-wrapper.sh /usr/local/bin/llama-server
 ADD container-files/llama-swap-launcher.sh /opt/llama/llama-swap/default-llama-swap-launcher

@@ -24,7 +24,6 @@ fi
 
 export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name')
 export stable_diffusion_tag=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest | jq -r '.tag_name') && \
-#export stable_diffusion_tag=master-560-e8323ca
 export llama_swap_version=$(curl -s https://api.github.com/repos/mostlygeek/llama-swap/releases/latest | jq -r '.tag_name')
 
 echo $llama_build > llama_version.txt
@@ -41,8 +40,8 @@ if [[ "$llama_build" == "" || "$llama_build" == "stable_diffusion_tag" ]]; then
 	exit 1
 fi
 
-if [[ "$SD_GPU_TARGETS" ]];then
-	extra_args="$extra_args --build-arg SD_GPU_TARGETS=$SD_GPU_TARGETS"
+if [[ "$GPU_TARGETS" ]];then
+	extra_args="$extra_args --build-arg GPU_TARGETS=$GPU_TARGETS"
 fi
 
 DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
