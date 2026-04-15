@@ -23,6 +23,7 @@ else
 fi
 
 export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name')
+llama_build="feature/triattention-scoring"
 export stable_diffusion_tag=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest | jq -r '.tag_name') && \
 export llama_swap_version=$(curl -s https://api.github.com/repos/mostlygeek/llama-swap/releases/latest | jq -r '.tag_name')
 

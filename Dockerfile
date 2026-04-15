@@ -105,9 +105,11 @@ WORKDIR /app
 ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
 ARG llama_build
 RUN echo llama_build=$llama_build && \
-    git clone --branch ${llama_build} --depth 1 https://github.com/ggml-org/llama.cpp.git && \
+    git clone --branch ${llama_build} --depth 1 https://github.com/domvox/llama.cpp-turboquant-hip.git llama.cpp && \
+#    git clone --branch ${llama_build} --depth 1 https://github.com/ggml-org/llama.cpp.git && \
     cd llama.cpp && \
-    export build_int=$(echo "$llama_build" | sed 's/[[:alpha:]]//g') && \
+    export build_int=1 && \
+    #$(echo "$llama_build" | sed 's/[[:alpha:]]//g') && \
     HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)" \
     cmake -S . -B build \
         -DLLAMA_BUILD_NUMBER="$build_int" \
