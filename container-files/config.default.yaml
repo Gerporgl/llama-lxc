@@ -78,7 +78,7 @@ macros:
     llama-server
     --port ${PORT}
   "llama-vulkan": >
-    /opt/llama/vulkan/llama-server
+   llama-server-vulkan
     --port ${PORT}
   "sd": >
     sd-server
@@ -103,9 +103,14 @@ models:
     macros:
       "default_ctx": 3072
     proxy: "${model-url}"
+    # Force to run on CPU
+    env:
+      - "ROCR_VISIBLE_DEVICES=-1"
     cmd: >
       ${llama}
       ${default_llama_args}
+      -ngl 0  
+      --no-op-offload
       -hf Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M
   "Qwen2.5-Coder-7B":
     proxy: "${model-url}"
@@ -144,8 +149,6 @@ models:
       ${default_llama_args}
       -hf unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ2_M
   "Z-Image-Turbo":
-    # New default timeouts cause issues with image generation
-    # that take more than 1 minute. You need to set this for every model potentially...
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >
@@ -156,8 +159,6 @@ models:
       --diffusion-fa
       --cfg-scale 1.0
   "Z-Image":
-    # New default timeouts cause issues with image generation
-    # that take more than 1 minute. You need to set this for every model potentially...
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >
@@ -168,8 +169,6 @@ models:
       --diffusion-fa
       --cfg-scale 5.0
   "Chroma":
-    # New default timeouts cause issues with image generation
-    # that take more than 1 minute. You need to set this for every model potentially...
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >
@@ -180,7 +179,6 @@ models:
       --sampling-method euler
       --cfg-scale 4.0
 #      --chroma-disable-dit-mask # Although it is documented to use this, it crashes with "buffer not set" error when generating an image
-
 
 # This persistent model can be used in continue.dev, for autocomplete
 # so we don't want to unload it if it is used
