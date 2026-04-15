@@ -48,17 +48,11 @@ RUN apt update && apt install -y \
 FROM rocm-dev as stable-diffusion
 ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
-# We also compile the vulkan version, since it is fast to compile and has a small binary size
-# and may be a viable option in some use cases. Combining both vulkan and rocm at the same time
-# could lead to GPU crash needing a full power off and on in my experience... so use with caution, ymmv
 ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
-    curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
     apt update && apt install -y git cmake clang ninja-build \
     zip \
-    vulkan-sdk \
     nodejs npm && \
     curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
     . /root/.bashrc && \
@@ -81,11 +75,7 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     cp ./bin/libstable-diffusion.so /usr/local/lib/ && \
     cd .. && rm build -R && \
     mkdir build && cd build && \
-    cmake .. -G "Ninja" -DSD_VULKAN=ON -DSD_BUILD_SHARED_LIBS=ON && \
-    cmake --build . --config Release && \
-    cp ./bin/sd-server /usr/local/bin/sd-server-vulkan && \
-    cp ./bin/sd-cli /usr/local/bin/sd-cli-vulkan && \
-    apt remove -y vulkan-sdk git cmake ninja-build clang zip nodejs npm \
+    apt remove -y git cmake ninja-build clang zip nodejs npm \
     && \
     apt autoremove -y && \
     apt clean && \
@@ -182,9 +172,6 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     sed -i -e '2iTERM=xterm-color\\' /root/.profile && \
     cp /root/.profile /home/ubuntu/.profile && \
     cp /root/.bashrc /home/ubuntu/.bashrc 
-
-RUN apt-get update && apt-get install -y libvulkan1 vulkan-tools mesa-vulkan-drivers && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Get llama-swap binary directly from their github release download
 # It seems simpler that way, and no extra delay for getting the latest llama-cpp, which is the most important
