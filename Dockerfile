@@ -82,9 +82,9 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     && \
     apt autoremove -y && \
     apt clean && \
-    mkdir -p /opt/stable-diffusion.cpp && \
-    mv ./LICENSE /opt/stable-diffusion.cpp/LICENSE && \
-    chmod 444 /opt/stable-diffusion.cpp/LICENSE && \
+    mkdir -p /opt/stable-diffusion && \
+    mv ./LICENSE /opt/stable-diffusion/LICENSE && \
+    chmod 444 /opt/stable-diffusion/LICENSE && \
     rm -rf \
     /root/stable-diffusion.cpp \
     /var/lib/apt/lists/* \
@@ -118,6 +118,7 @@ RUN echo llama_build=$llama_build && \
     mv /app/llama.cpp/build/bin/* /opt/llama && \
     rm /app/llama.cpp/build -R && \
     cmake -B build -DGGML_NATIVE=OFF \
+        -DLLAMA_BUILD_NUMBER="$build_int" \
         -DGGML_VULKAN=ON \
         -DCMAKE_INSTALL_RPATH="\$ORIGIN" \
         -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
@@ -192,12 +193,10 @@ RUN mkdir -p /opt/llama/llama-swap && \
     mv ./llama-swap/llama-swap /usr/local/bin/ && mv ./llama-swap/LICENSE.md /opt/llama/llama-swap/ && rm -rf llama-swap.tar.gz llama-swap
 
 # Copy llama.cpp binaries that we just build in a previous stage
-COPY --from=llama-cpp /opt/llama/* /opt/llama/
-COPY --from=llama-cpp /opt/llama/vulkan/* /opt/llama/vulkan/
+COPY --from=llama-cpp /opt/llama /opt/llama
 
 # Copy the stable-diffusion binaries that we compiled in a previous stage
 COPY --from=stable-diffusion /opt/stable-diffusion /opt/stable-diffusion
-#COPY --from=stable-diffusion /opt/stable-diffusion/vulkan/* /opt/stable-diffusion/vulkan/
 
 RUN \
     # Create our own expected gid for video and render
@@ -212,10 +211,6 @@ RUN \
     echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
     echo "/opt/rocm/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
 
-#ADD --chmod=0755 container-files/llama-server-wrapper.sh /usr/local/bin/llama-server
-#ADD --chmod=0755 container-files/llama-server-vulkan-wrapper.sh /usr/local/bin/llama-server-vulkan
-#ADD --chmod=0755 container-files/sd-server-wrapper.sh /usr/local/bin/sd-server
-#ADD --chmod=0755 container-files/sd-server-vulkan-wrapper.sh /usr/local/bin/sd-server-vulkan
 RUN ln -s /opt/llama/llama-server /usr/local/bin/llama-server && \
     ln -s /opt/llama/vulkan/llama-server /usr/local/bin/llama-server-vulkan && \
     ln -s /opt/stable-diffusion/sd-server /usr/local/bin/sd-server && \
