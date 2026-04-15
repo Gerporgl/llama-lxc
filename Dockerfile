@@ -1,4 +1,4 @@
-FROM docker.io/rocm/dev-ubuntu-24.04:7.2.2 as rocm-base
+FROM ubuntu:24.04 as rocm-base
 
 USER root
 WORKDIR /root
@@ -6,13 +6,33 @@ ARG ROCM_VERSION=7.2.2
 # Install "minimum" dependencies (4GB?), register ROCm 7.2.2 repository, and install runtime + tools
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg2 \
+    ca-certificates \
+    && mkdir -p /etc/apt/keyrings \
+    \
+    # 1. Download and install the official AMD GPG key
+    && curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
+    \
+    # 2. Register the ROCm repository for Ubuntu 24.04
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION noble main" \
+
+    | tee /etc/apt/sources.list.d/rocm.list \
+    \
+    # 3. Pin the repository to prioritize official AMD packages
+    && echo 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' \
+    | tee /etc/apt/preferences.d/rocm-pin-600 \
+    \
+    # 4. Install only what's needed for llama-server and monitoring
+    && apt-get update && apt-get install -y --no-install-recommends \
     rocm-hip-runtime \
     amd-smi-lib \
     rocminfo \
     hipblas \
     rocblas \
-    # Cleanup to keep image slim
+    \
+    # 5. Cleanup to keep image slim
     && apt-get purge -y gnupg2 \
     && apt-get autoremove -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -202,6 +222,7 @@ RUN \
     # Create our own expected gid for video and render
     # so that our host script can expect pre defined numbers
     # that won't change
+    groupadd -g 444 render && \
     groupadd -g 555 video_host && \
     groupadd -g 777 render_host && \
     # but also add the root user to every possible group (probably needed for podman local run)
