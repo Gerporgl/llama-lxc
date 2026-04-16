@@ -64,8 +64,6 @@ ARG stable_diffusion_tag
 ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-#    curl -fsSL https://packages.lunarg.com/lunarg-signing-key-pub.asc | tee /etc/apt/trusted.gpg.d/lunarg.asc && \
-#    curl -fsSL -o /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list && \
     apt update && apt install -y \
     zip \
     nodejs npm && \
@@ -83,20 +81,22 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     cd .. && \
     mkdir stable-diffusion.cpp/build && \
     cd stable-diffusion.cpp/build && \
-    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=amdclang -DSD_BUILD_SHARED_LIBS=ON -DCMAKE_CXX_COMPILER=amdclang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$GPU_TARGETS -DAMDGPU_TARGETS=$GPU_TARGETS -DCMAKE_INSTALL_RPATH="\$ORIGIN" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
+    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=amdclang -DSD_BUILD_SHARED_LIBS=ON -DCMAKE_CXX_COMPILER=amdclang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$GPU_TARGETS -DAMDGPU_TARGETS=$GPU_TARGETS -DCMAKE_INSTALL_RPATH='$ORIGIN;$ORIGIN/../lib' -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
     cmake --build . --config Release && \
-    mkdir -p /opt/stable-diffusion && \
-    cp ./bin/sd-server /opt/stable-diffusion/ && \
-    cp ./bin/sd-cli /opt/stable-diffusion/ && \
-    cp ./bin/libstable-diffusion.so /opt/stable-diffusion/ && \
+    mkdir -p /opt/stable-diffusion/bin && \
+    mkdir -p /opt/stable-diffusion/lib && \
+    cp ./bin/sd-server /opt/stable-diffusion/bin/ && \
+    cp ./bin/sd-cli /opt/stable-diffusion/bin/ && \
+    cp ./bin/libstable-diffusion.so /opt/stable-diffusion/lib/ && \
     cd .. && rm build -R && \
     mkdir build && cd build && \
-    cmake .. -G "Ninja" -DSD_BUILD_SHARED_LIBS=ON -DSD_VULKAN=ON  -DCMAKE_INSTALL_RPATH="\$ORIGIN" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON && \
+    cmake .. -G "Ninja" -DSD_BUILD_SHARED_LIBS=ON -DSD_VULKAN=ON  -DCMAKE_INSTALL_RPATH='$ORIGIN;$ORIGIN/../lib' -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON && \
     cmake --build . --config Release && \
-    mkdir -p /opt/stable-diffusion/vulkan && \
-    cp ./bin/sd-server /opt/stable-diffusion/vulkan/ && \
-    cp ./bin/sd-cli /opt/stable-diffusion/vulkan/ && \
-    cp ./bin/libstable-diffusion.so /opt/stable-diffusion/vulkan/ && \
+    mkdir -p /opt/stable-diffusion/vulkan/bin && \
+    mkdir -p /opt/stable-diffusion/vulkan/lib && \
+    cp ./bin/sd-server /opt/stable-diffusion/vulkan/bin/ && \
+    cp ./bin/sd-cli /opt/stable-diffusion/vulkan/bin/ && \
+    cp ./bin/libstable-diffusion.so /opt/stable-diffusion/vulkan/lib/ && \
     cd .. && \
     apt remove -y git zip nodejs npm \
     && \
@@ -119,35 +119,37 @@ WORKDIR /app
 ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
 ARG llama_build
 RUN echo llama_build=$llama_build && \
+#    git clone --branch ${llama_build} --depth 1 https://github.com/domvox/llama.cpp-turboquant-hip.git llama.cpp && \
     git clone --branch ${llama_build} --depth 1 https://github.com/ggml-org/llama.cpp.git && \
     cd llama.cpp && \
+#    export build_int="1" && \
     export build_int=$(echo "$llama_build" | sed 's/[[:alpha:]]//g') && \
     HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)" \
     cmake -S . -B build \
         -DLLAMA_BUILD_NUMBER="$build_int" \
         -DGGML_HIP=ON \
-        -DCMAKE_INSTALL_RPATH="\$ORIGIN" \
+        -DCMAKE_INSTALL_RPATH='$ORIGIN;$ORIGIN/../lib' \
         -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
         -DGGML_HIP_ROCWMMA_FATTN=ON \
         -DAMDGPU_TARGETS="$GPU_TARGETS" \
         -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON \
         -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_TESTS=OFF \
     && cmake --build build --config Release -j$(nproc) && \
-    mkdir -p /opt/llama && \
+    mkdir -p /opt/llama/bin && \
     mv /app/llama.cpp/LICENSE /opt/llama && \
-    mv /app/llama.cpp/build/bin/* /opt/llama && \
+    mv /app/llama.cpp/build/bin/* /opt/llama/bin/ && \
     rm /app/llama.cpp/build -R && \
     cmake -B build -DGGML_NATIVE=OFF \
         -DLLAMA_BUILD_NUMBER="$build_int" \
         -DGGML_VULKAN=ON \
-        -DCMAKE_INSTALL_RPATH="\$ORIGIN" \
+        -DCMAKE_INSTALL_RPATH='$ORIGIN;$ORIGIN/../lib' \
         -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
         -DLLAMA_BUILD_TESTS=OFF \
         -DGGML_BACKEND_DL=ON \
         -DGGML_CPU_ALL_VARIANTS=ON && \
     cmake --build build --config Release -j$(nproc) && \
-    mkdir -p /opt/llama/vulkan && \
-    mv /app/llama.cpp/build/bin/* /opt/llama/vulkan && \
+    mkdir -p /opt/llama/vulkan/bin && \
+    mv /app/llama.cpp/build/bin/* /opt/llama/vulkan/bin/ && \
     rm /app -rf
 
 # Use our own rocm base and install our lxc base system and service
@@ -227,15 +229,14 @@ RUN \
     groupadd -g 777 render_host && \
     # but also add the root user to every possible group (probably needed for podman local run)
     usermod -aG video_host,render_host,video,render root && \
-    echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rocm/bin\"" > /etc/environment && \
-    echo "LLAMA_ARG_HOST=0.0.0.0" >> /etc/environment && \
+    echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rocm/bin:/opt/llama/bin:/opt/stable-diffusion/bin\"" > /etc/environment && \
+    echo "LLAMA_CACHE=/root/data/models" >> /etc/environment && \
+    echo "ROCR_VISIBLE_DEVICES=0" >> /etc/environment && \
     echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
     echo "/opt/rocm/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
 
-RUN ln -s /opt/llama/llama-server /usr/local/bin/llama-server && \
-    ln -s /opt/llama/vulkan/llama-server /usr/local/bin/llama-server-vulkan && \
-    ln -s /opt/stable-diffusion/sd-server /usr/local/bin/sd-server && \
-    ln -s /opt/stable-diffusion/vulkan/sd-server /usr/local/bin/sd-server-vulkan
+RUN ln -s /opt/llama/vulkan/bin/llama-server /usr/local/bin/llama-server-vulkan && \
+    ln -s /opt/stable-diffusion/vulkan/bin/sd-server /usr/local/bin/sd-server-vulkan
 ADD container-files/llama-swap-launcher.sh /opt/llama/llama-swap/default-llama-swap-launcher
 
 ADD container-files/prepare-llama.service /etc/systemd/system/

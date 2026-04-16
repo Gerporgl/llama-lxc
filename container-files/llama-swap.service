@@ -5,9 +5,8 @@ After=prepare-llama.service
 Requires=prepare-llama.service
 
 [Service]
-Environment=LLAMA_CACHE=/root/data/models
+EnvironmentFile=/etc/environment
 #Environment=HSA_OVERRIDE_GFX_VERSION=10.3.0
-Environment=ROCR_VISIBLE_DEVICES=0
 
 ExecStart=/root/data/llama-swap-launcher
 RestartSec=2s
