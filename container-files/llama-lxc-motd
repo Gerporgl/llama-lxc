@@ -10,7 +10,7 @@ echo -e "* \e[1m\e[97mjournalctl -u llama-swap -f\e[0m to view llama-swap servic
 echo -e "* \e[1m\e[97mjournalctl -u llama-swap | cat\e[0m to retrieve / print all logs"
 echo -e "* \e[1m\e[97msystemctl restart llama-swap && journalctl -u llama-swap -f\e[0m restart llama-swap service and tail the logs"
 echo -e "* \e[1m\e[97mnano ~/data/config.yaml | cat\e[0m edit the llama-swap config"
-echo -e "* \e[1m\e[97mnano  ~/data/llama-swap-launcher\e[0m review or customize the llama-swap laucher script (set specifci env variables such as HSA_OVERRIDE_GFX_VERSION)"
+echo -e "* \e[1m\e[97mnano ~/data/llama-swap-launcher\e[0m review or customize the llama-swap launcher script (set specific env variables such as HSA_OVERRIDE_GFX_VERSION, tls certificates, etc.)"
 echo -e "* \e[1m\e[97mhf cache list\e[0m use huggingface cli to list the llama-server huggingface model cache"
 echo -e "* \e[1m\e[97mhf cache prune\e[0m remove unreferenced model layers (old layers, etc.)"
 echo -e "* \e[1m\e[97mcleanup-hf-cache.sh\e[0m remove models that are not listed in llama-swap config! Models have to be listed on a single line in config.yaml, just like the provided example config file"
