@@ -177,7 +177,10 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     init \
     # Networkd based stack (better ipv6 and dhcp support than network interfaces when running on proxmox/lxc)
     #networkd-dispatcher \
-    iproute2 && \
+    iproute2 \
+    # Python... (mostly for huggingface cli, to manage and cleanup model cache)
+    python3  python3-pip && \
+    pip3 install -U "huggingface_hub" --break-system-packages && \
     apt-get -y remove dbus && \
     apt-get -y autoremove && \
     apt-get -y clean  && \
@@ -232,6 +235,7 @@ RUN \
     echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rocm/bin:/opt/llama/bin:/opt/stable-diffusion/bin\"" > /etc/environment && \
     echo "LLAMA_CACHE=/root/data/models" >> /etc/environment && \
     echo "ROCR_VISIBLE_DEVICES=0" >> /etc/environment && \
+    echo "HF_HUB_CACHE=/root/data/models/" >> /etc/environment && \
     echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
     echo "/opt/rocm/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
 
@@ -241,12 +245,15 @@ ADD container-files/llama-swap-launcher.sh /opt/llama/llama-swap/default-llama-s
 
 ADD container-files/prepare-llama.service /etc/systemd/system/
 ADD --chmod=755 container-files/prepare.sh /usr/local/bin
+ADD --chmod=755 container-files/llama-lxc-motd /etc/
+ADD --chmod=755 container-files/cleanup-hf-cache.sh /usr/local/bin/
 
 ADD container-files/llama-swap.service /etc/systemd/system/
 ADD container-files/config.default.yaml /opt/llama/llama-swap
 RUN mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
     systemctl enable llama-swap.service && \
-    systemctl enable prepare-llama.service
+    systemctl enable prepare-llama.service && \
+    ln -s /etc/llama-lxc-motd /etc/update-motd.d/10-llama-lxc-motd
 
 
 STOPSIGNAL SIGRTMIN+3
