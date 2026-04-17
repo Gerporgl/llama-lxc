@@ -27,8 +27,6 @@ This solution greatly improves the sysadmin user experience, and is probably the
   * GPU targets:
     * The ROCm build of stable-diffusion is now properly compiled with all gpu targets, not just gfx1200.
     * Previously this would have caused stable-diffusion to exit silently while generating an image if the gpu did not match. This should now work properly.
-    * The side effect is that the image size has increased slightly, but this also immensely increased the compile time if you build the docker image yourself, even on 16 cores CPUs or more. You can change the targets in the Dockerfile if you want to build a custom image for your GPU.
-    * llama.cpp is not affected since the binary we grab from their repo already supports all GPUs, and can be forced with the usual HSA_OVERRIDE_GFX_VERSION that can be set in the llama-swap service env variables.
 
   * Latest stable-diffusion, patched with stable-ui:
     * Recently (April 11, 2026), stable-diffusion have started to include a new webui (sdcpp-webui), instead of their modified fork of stable-ui
@@ -47,8 +45,6 @@ Or if you don't want to build the entire Dockerfile locally, you can use run.sh 
 ./run.sh
 ```
 
-Note: unfortunately, the llama-swap rocm image is pretty big, around 7+ GB, so you may need to be patient while it downloads, depending on your internet connection.
-
 Running the script above will ask for the containers root password (can be blank/empty), and will create and mount a local ./data folder on your computer.
 
 After startup, the container should automatically have started llama-swap, you can check the journalctl logs to verify if was started successfully.
@@ -65,7 +61,6 @@ Pre requisites:
  - Enter the URL of the registry where this image is located
    - Pro tip: You can also use "Distribution registry" running as a CT container on your Proxmox local network as a simple solution for convenience along with registry-ui
    - Alternatively, you can now download the image from ghcr.io/gerporgl/llama-lxc:latest
-     - Important note: The current tagging scheme does not really tell you which upstream version of llama-swap and sd-server you'll get from ghcr.io, but you can be certain that it was the latest rocm build at the time the image was pushed to ghcr.io... however, for that reason, you may want to build your own image locally afterward, as I may not often refresh the build on ghcr.io, unless I find some way to automate that.
  - Proxmox should then download the container image locally
  - Also, very important!:
    - The container is designed to use a second volume to store models and data
@@ -97,8 +92,6 @@ The script now has an experimental feature at the end to optimize the zfs flags,
 ./run_local.sh  # Run the container that you just build locally
 ```
 
-The "pull" option is very important if you want later on to get the latest llama-swap that will hopefully match closely sd-server compilation later on!
-
 ## What It Does / technical details
 
 Llama-Swap runs as a systemd container with GPU passthrough, allowing you to:
@@ -112,7 +105,7 @@ Llama-Swap runs as a systemd container with GPU passthrough, allowing you to:
 ## Key Features
 
 ### GPU Support
-- **ROCm Integration**: AMD GPU acceleration via HSA (Heterogeneous System Architecture <- that is what the AI said...)
+- **ROCm Integration**: AMD GPU acceleration via HSA (Heterogeneous System Architecture)
 - **Device Mapping**: Passes through `/dev/kfd` (kernel driver) and `/dev/dri/render*` (direct rendering)
 - **GPU Assignment**: Control which GPU to use via `ROCR_VISIBLE_DEVICES` environment variable, already set in llama-swap service to only use GPU 0 (so that iGPU is not used if you have one), you can adjust this based on your hardware.
 
