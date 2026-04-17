@@ -92,11 +92,23 @@ The script now has an experimental feature at the end to optimize the zfs flags,
 ./run_local.sh  # Run the container that you just build locally
 ```
 
+By default, the build script will include the following GPU targets:
+```
+"gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+```
+This signficiantly increases build times (over 15 minutes with a 16 core CPU, hours on a quad core), if you only have one GPU familiy that you need to support, you can override this easily by running the build script like this:
+```
+GPU_TARGETS="gfx1030" ./build.sh 
+```
+This will build both stable-diffusion.cpp and llama.cpp for these GPU tagets only, and will be a lot faster to build, and will produce smaller images.
+
+This only apply to ROCm binaries, the vulkan binaries do not target any specific architecture and are generic.
+
 ## What It Does / technical details
 
 Llama-Swap runs as a systemd container with GPU passthrough, allowing you to:
 
-- **Swap models automatically**: The concurrency of multiple modesl is based on the config.yaml and the groups configured. You can decide based on your need and the vram you have...
+- **Swap models automatically**: The concurrency of multiple models is based on the config.yaml and the groups configured. You can decide based on your need and the vram you have...
 - **GPU passthrough**: Access AMD GPU devices via `/dev/kfd` and `/dev/dri`
 - **Multi-model support**: Llama, Gemma, Stable Diffusion, and more
   - This is mostly thanks to the fact we uses llama-swap: this container uses llama-swap official container image as a base, but currently also compile and adds sd-server (stable-diffusion.cpp build for ROCm) to it.
