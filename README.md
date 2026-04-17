@@ -14,13 +14,13 @@ This solution greatly improves the sysadmin user experience, and is probably the
   - This is mostly for running this locally for testing
 - Proxmox VE (for Proxmox deployment)
   - This is the intended way of deploying this solution
-  - Note: Most likely Requires Proxmox VE 9.1.7+ updated to latest kernel and firmware ("no subcription" or "test" may be needed), to properly support ROCm 7.2.1 and above on gfx1200 hardware
+  - Note: Most likely Requires Proxmox VE 9.1.7+ updated to latest kernel and firmware ("no subcription" or "test" may be needed), to properly support ROCm 7.2.2 and above on gfx1200 hardware
   - There is no need to install ROCm or anything special on the host for this to work, simply updating to the latest kernel and firmware packages seems sufficient
 
 ### Important notes / updates
 
  * Vulkan + ROCm binaries now included:
-   * The container image now include both llama.cpp and stable-diffusion vulkan binaries as well as ROCm.
+   * The container image now include both llama.cpp and stable-diffusion vulkan binaries as well as ROCm 7.2.2
    * You can change your config.yaml to point to these binaries, their location can be seen in the config.default.yaml, and a macro is already defined if you want to use them.
    * WARNING! Just be aware that if you mix both (use ROCm and vulkan at the same time), based on my experience, this could cause the amdgpu to have a hard crash (ring buffer errors in dmesg), and need a full card power off (host computer turned off completely), in order to recover from this.
 
@@ -34,7 +34,6 @@ This solution greatly improves the sysadmin user experience, and is probably the
     * Recently (April 11, 2026), stable-diffusion have started to include a new webui (sdcpp-webui), instead of their modified fork of stable-ui
     * The new UI does not appear to work yet out of the box with llama-swap, and has less features than stable-ui
     * For the time being, we get the latest source from stable-diffusion to compile it, but we patch it with the old stable-ui submodule.
-    * sdcpp-webui is supposed to be a new lightweight option, but in the context of a ROCm container image of 6+GB in size, the webui is not what's taking most of the resources currently. We'll keep an eye on this, it may improve over time, and may also provide better API integration with sd-server.
 
 ### How to use this container
 
@@ -95,7 +94,6 @@ The script now has an experimental feature at the end to optimize the zfs flags,
 **Manual Setup**
 ```bash
 ./build.sh      # Only build the container image
-./build.sh pull # Only build the container image, making sure to pull the latest llama-swap base image first
 ./run_local.sh  # Run the container that you just build locally
 ```
 
