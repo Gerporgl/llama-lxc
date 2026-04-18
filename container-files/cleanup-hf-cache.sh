@@ -63,7 +63,7 @@ for repo_dir in "$HF_CACHE_DIR"/models--*; do
                 quant_part="${keep_item#*:}"
                 
                 # Match repo (normalized) and quantization part in filename
-                if [[ "$repo_normalized" == "$repo_part" ]] && [[ "$filename" == *"$quant_part"* ]]; then
+                if [[ "${repo_normalized,,}" == "${repo_part,,}" ]] && [[ "${filename,,}" == *"${quant_part,,}"* ]]; then
                     FOUND_IN_KEEP["$repo_normalized|$revision"]=1
                 fi
             done <<< "$KEEP_LIST"
