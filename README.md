@@ -142,6 +142,22 @@ Full config example from llama-swap project: [config.example.yaml](https://githu
 
 After saving the config, llama-swap should automatically reload it, there should be no need to restart the service via systemctl.
 
+## Huggingface and model cleanup
+
+The container image now include the Huggingface cli tool (hf command), so you can list the cache and prune manually, and do other things.
+
+A helper script was also added, called cleanup-hf-cache.sh. Once you are inside the container (through ssh or a console for example), you can simply run it like this:
+```
+cleanup-hf-cache.sh
+```
+IMPORTANT! The script will look for models in the higgingface cache that are not listed in your config.yaml
+
+It will then ask if you want to proceed and delete those unreferenced model variants.
+Models that are listed in your config.yaml but commented still counts as a referenced model quant and won't be deleted. If you want to remove them, remove them entirely from your config and backup the config somewhere else if needed.
+
+The script also always try to remove unlinked blob files (without any confirmation...), hopefully this should be safe for most use cases. This was needed since there is no easy way to remove only one quant variant currently with hf cache rm (it can only delete the entire model and all quants).
+
+
 ## See Also
 
 - [llama-Swap](https://github.com/mostlygeek/llama-swap) documentation
