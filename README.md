@@ -150,7 +150,7 @@ A helper script was also added, called cleanup-hf-cache.sh. Once you are inside 
 ```
 cleanup-hf-cache.sh
 ```
-IMPORTANT! The script will look for models in the higgingface cache that are not listed in your config.yaml
+IMPORTANT! The script will look for models in the huggingface cache that are not listed in your config.yaml
 
 It will then ask if you want to proceed and delete those unreferenced model variants.
 Models that are listed in your config.yaml but commented still counts as a referenced model quant and won't be deleted. If you want to remove them, remove them entirely from your config and backup the config somewhere else if needed.
