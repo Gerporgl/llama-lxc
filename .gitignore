@@ -3,3 +3,4 @@ data/*
 push.sh
 *_version.txt
 .vscode
+pi-session*
