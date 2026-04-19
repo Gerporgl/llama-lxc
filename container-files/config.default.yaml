@@ -25,11 +25,6 @@ healthCheckTimeout: 600
 #   - "none": no logs are ever written to stdout
 logToStdout: "both"
 
-# metricsMaxInMemory: maximum number of metrics to keep in memory
-# - optional, default: 1000
-# - controls how many metrics are stored in memory before older ones are discarded
-# - useful for limiting memory usage when processing large volumes of metrics
-
 # captureBuffer: how many MBs to allocate for storing request/response captures
 # - optional, default: 10
 # - set to 0 to disable
@@ -47,11 +42,6 @@ captureBuffer: 100
 #   reasoning field so chat UIs can show that loading is in progress.
 # - see #366 for more details
 sendLoadingState: false
-
-# includeAliasesInList: present aliases within the /v1/models OpenAI API listing
-# - optional, default: false
-# - when true, model aliases will be output to the API model listing duplicating
-#   all fields except for Id so chat UIs can use the alias equivalent to the original.
 
 # globalTTL: the default TTL in seconds before unloading a model
 # - optional, default: 0 (never automatically unload)
@@ -99,11 +89,13 @@ macros:
 # - below are examples of the all the settings a model can have
 
 models:
+  # This model is good for code completion with continue.dev
   "qwen2.5-coder-1.5b-base":
     macros:
       "default_ctx": 3072
     proxy: "${model-url}"
-    # Force to run on CPU
+    # Force to run on CPU, since this model is small and fast, this is a viable option.
+    # This saves vram for other larger models like gemma 4 or qwen 3.6 to run at the same time
     env:
       - "ROCR_VISIBLE_DEVICES=-1"
     cmd: >
@@ -112,47 +104,51 @@ models:
       -ngl 0  
       --no-op-offload
       -hf Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M
-  "Qwen2.5-Coder-7B":
+  # This is a good general purpose and coding model,
+  # the newer Qwen3.6 moe A3B (fast and good)
+  # UD-IQ3_S is probably the largest you can fit on a 16GB vram gpu with a 32K context
+  # The temperature and other options are taken from
+  # https://unsloth.ai/docs/models/qwen3.6
+  "Qwen3.6-35B-A3B":
     proxy: "${model-url}"
     cmd: >
       ${llama}
       ${default_llama_args}
-      -hf Qwen/Qwen2.5-Coder-7B-Instruct-GGUF:Q8_0
-  "Qwen2.5-Coder-14B":
+      --temp 0.6
+      --top-p 0.95
+      --top-k 20
+      --min-p 0.00
+      -hf unsloth/Qwen3.6-35B-A3B-GGUF:UD-IQ3_S
+  # Of course, gemma 4 A4B moe is the other good one (fast and good)
+  # This quant fits on a 16GB vram gpu with 32K context
+  # The temperature and other options are taken from
+  # https://unsloth.ai/docs/models/gemma-4
+  "gemma-4-26B-A4B":
     proxy: "${model-url}"
     cmd: >
       ${llama}
       ${default_llama_args}
-      -hf Qwen/Qwen2.5-Coder-14B-Instruct-GGUF:Q5_K_M
-  "Qwopus3.5-9B-v3":
-    proxy: "${model-url}"
-    cmd: >
-      ${llama}
-      ${default_llama_args}
-      -hf Jackrong/Qwopus3.5-9B-v3-GGUF:Q5_K_S
-  "Qwopus3.5-27B-v3":
-    proxy: "${model-url}"
-    cmd: >
-      ${llama}
-      ${default_llama_args}
-      -hf Jackrong/Qwopus3.5-27B-v3-GGUF:Q2_K
+      --temp 1.0
+      --top-p 0.95
+      --top-k 64
+      --chat-template-kwargs '{"enable_thinking":true}'
+      -hf unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ4_NL
   "gemma-4-E4B":
     proxy: "${model-url}"
     cmd: >
       ${llama}
       ${default_llama_args}
       -hf unsloth/gemma-4-E4B-it-GGUF:Q5_K_M
-  "gemma-4-26B-A4B":
-    proxy: "${model-url}"
-    cmd: >
-      ${llama}
-      ${default_llama_args}
-      -hf unsloth/gemma-4-26B-A4B-it-GGUF:UD-IQ2_M
+  # For stable-diffusion, offload-to-cpu is generally a good option
+  # if you are generating bigger images (1024 or above)
+  # otherwise this may crash or produce blank images, depending if you have enough vram
+  # This may have a small performance impact
   "Z-Image-Turbo":
     proxy: "${model-url}"
     checkEndpoint: /
     cmd: >
       ${sd}
+      --offload-to-cpu
       --diffusion-model ${sd_models_dir}/z_image_turbo-Q6_K.gguf
       --vae ${sd_models_dir}/flux1-dev.ae.safetensors
       --llm ${sd_models_dir}/Qwen3-4B-2507-Instruct-Uncensored-HauhauCS-Aggressive-Q6_K.gguf
@@ -163,6 +159,7 @@ models:
     checkEndpoint: /
     cmd: >
       ${sd}
+      --offload-to-cpu
       --diffusion-model ${sd_models_dir}/z-image-Q6_K.gguf
       --vae ${sd_models_dir}/flux1-dev.ae.safetensors
       --llm ${sd_models_dir}/Qwen3-4B-2507-Instruct-Uncensored-HauhauCS-Aggressive-Q6_K.gguf
@@ -173,6 +170,7 @@ models:
     checkEndpoint: /
     cmd: >
       ${sd}
+      --offload-to-cpu
       --diffusion-model  ${sd_models_dir}/chroma-unlocked-v50-Q5_0.gguf
       --vae ${sd_models_dir}/flux1-dev.ae.safetensors
       --t5xxl ${sd_models_dir}/t5xxl-Q5_0.gguf
@@ -183,6 +181,7 @@ models:
 # This persistent model can be used in continue.dev, for autocomplete
 # so we don't want to unload it if it is used
 # It must be small enough to fit in vram with any of the models above
+# or, run on CPU, as is the case now with the config above
 groups:
   "persistent-group":
     swap: false
