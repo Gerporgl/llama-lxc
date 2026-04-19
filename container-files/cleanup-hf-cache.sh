@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Use nullglob to prevent errors if no files match a pattern
+shopt -s nullglob
+
 clean_blob() {
     echo "Checking for any unreferenced blobs and removing."
     
@@ -15,8 +18,8 @@ clean_blob() {
 }
 
 # 1. Get the list of models to KEEP from config.yaml
-# Format expected: unsloth/gemma-4-E4B-it-GGUF:Q5_K_M
-KEEP_LIST_DISPLAY=$(cat ~/data/config.yaml | grep "\-hf" | sed 's|-hf||g' | tr -d ' \t#')
+# We look for lines containing "-hf", strip comments, then extract the repo:quant part.
+KEEP_LIST_DISPLAY=$(grep -E "[[:space:]]*-hf" ~/data/config.yaml | sed 's/#*//' | sed -E 's/.*-hf[[:space:]]*([^[:space:]]+).*/\1/' | tr -d ' \t')
 
 if [ -z "$KEEP_LIST_DISPLAY" ]; then
     echo "Error: Keep list is empty. Check your config.yaml or the grep pattern."
@@ -49,10 +52,9 @@ fi
 echo "Scanning cache at $HF_CACHE_DIR..."
 
 # We will track files to delete
-# Key for associative arrays: "repo|revision"
-declare -A FILES_TO_DELETE_BY_REV  # "repo|rev" -> "file1, file2"
-declare -A REPO_BY_REV            # "repo|rev" -> repo_name
-declare -a ALL_DELETE_PATHS       # List of absolute paths to rm
+declare -A FILES_TO_DELETE_BY_REV
+declare -A REPO_BY_REV
+declare -a ALL_DELETE_PATHS
 
 # 3. Iterate through the cache directory
 for repo_dir in "$HF_CACHE_DIR"/models--*; do
@@ -74,6 +76,7 @@ for repo_dir in "$HF_CACHE_DIR"/models--*; do
             [ -e "$file" ] || continue
             filename=$(basename "$file")
             filename_lower=$(echo "$filename" | tr '[:upper:]' '[:lower:]')
+            
             if [[ "${filename_lower}" == "mmproj"* ]]; then
                 continue
             fi
@@ -113,7 +116,6 @@ fi
 echo ""
 echo "--- THE FOLLOWING FILES WILL BE DELETED ---"
 for rev_key in "${!FILES_TO_DELETE_BY_REV[@]}"; do
-    # Extract repo and revision from key
     repo="${REPO_BY_REV[$rev_key]}"
     rev="${rev_key#*|}"
     echo "  - $repo (rev: $rev) [files: ${FILES_TO_DELETE_BY_REV[$rev_key]}]"
@@ -131,7 +133,7 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
     done
     
     echo "Cleaning up unreferenced blobs (pruning)..."
-    # We use your tool's prune command to free up actual disk space
+    # Using the 'hf' command to try to prune any unreferended data
     hf cache prune
 
     clean_blob
@@ -140,4 +142,3 @@ if [[ "$confirm" =~ ^[Yy]$ ]]; then
 else
     echo "Deletion cancelled."
 fi
-
