@@ -22,10 +22,12 @@ else
 	fi
 fi
 
+export rocm_version=7.12
 export llama_build=$(curl -s https://api.github.com/repos/ggml-org/llama.cpp/releases/latest | jq -r '.tag_name')
 export stable_diffusion_tag=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest | jq -r '.tag_name') && \
 export llama_swap_version=$(curl -s https://api.github.com/repos/mostlygeek/llama-swap/releases/latest | jq -r '.tag_name')
 
+echo $rocm_version > rocm_version.txt
 echo $llama_build > llama_version.txt
 echo $stable_diffusion_tag > sd_version.txt
 echo $llama_swap_version > llama_swap_version.txt
@@ -49,6 +51,7 @@ DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
 	--build-arg llama_build=$llama_build \
 	--build-arg stable_diffusion_tag=$stable_diffusion_tag \
 	--build-arg llama_swap_build=$llama_swap_build \
+	--build-arg ROCM_VERSION=$rocm_version \
 	-t llama-lxc:latest .
 
 set +e

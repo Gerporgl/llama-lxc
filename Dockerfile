@@ -2,7 +2,7 @@ FROM ubuntu:24.04 as rocm-base
 
 USER root
 WORKDIR /root
-ARG ROCM_VERSION=7.2.2
+ARG ROCM_VERSION=7.12
 # Install "minimum" dependencies (4GB?), register ROCm 7.2.2 repository, and install runtime + tools
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
@@ -10,14 +10,11 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     curl \
     gnupg2 \
     ca-certificates \
-    && mkdir -p /etc/apt/keyrings \
-    \
-    # 1. Download and install the official AMD GPG key
-    && curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
-    \
-    # 2. Register the ROCm repository for Ubuntu 24.04
-    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION noble main" \
-
+    libatomic1 libquadmath0
+RUN \
+    mkdir --parents --mode=0755 /etc/apt/keyrings \
+    && curl -fsSL https://repo.amd.com/rocm/packages/gpg/rocm.gpg | gpg --dearmor | tee /etc/apt/keyrings/amdrocm.gpg > /dev/null \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/amdrocm.gpg] https://repo.amd.com/rocm/packages/ubuntu2404 stable main" \
     | tee /etc/apt/sources.list.d/rocm.list \
     \
     # 3. Pin the repository to prioritize official AMD packages
@@ -26,11 +23,8 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     \
     # 4. Install only what's needed for llama-server and monitoring
     && apt-get update && apt-get install -y --no-install-recommends \
-    rocm-hip-runtime \
-    amd-smi-lib \
-    rocminfo \
-    hipblas \
-    rocblas \
+    amdrocm${ROCM_VERSION}-gfx120x \
+    amdrocm-opencl7.12 \
     \
     # 5. Cleanup to keep image slim
     && apt-get purge -y gnupg2 \
@@ -38,15 +32,18 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 FROM rocm-base as rocm-dev
+ARG ROCM_VERSION=7.12
+ENV ROCM_PATH=/opt/rocm/core
+ENV PATH=$PATH:$ROCM_PATH/bin
 RUN apt update && apt install -y \
     # Vulkan related dev packages
     libssl-dev curl libxcb-xinput0 libxcb-xinerama0 libxcb-cursor-dev libvulkan-dev glslc spirv-headers \
     # ROCm packages
-    hip-dev \
-    hipblas-dev \
-    rocblas-dev \
-    rocm-dev \
-    rocwmma-dev \
+    # We have to include all major family of package that we want to support
+    # Right now gfx130x does not exists yet...
+    # We have to find a way to map this to oru GPU_TARGETS, which are more specific.
+    amdrocm-core-dev${ROCM_VERSION}-gfx120x \
+    #amdrocm-core-sdk-gfx120x \
     # build essentials
     build-essential \
     cmake \
@@ -61,13 +58,13 @@ RUN apt update && apt install -y \
 FROM rocm-dev as stable-diffusion
 ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
-ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+ARG GPU_TARGETS="gfx1200;gfx1201"
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     apt update && apt install -y \
     zip \
     nodejs npm && \
-    curl -fsSL https://get.pnpm.io/install.sh | PNPM_VERSION=10.15.1 ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
+    curl -fsSL https://get.pnpm.io/install.sh | ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
     . /root/.bashrc && \
     echo $SD_GPU_TARGETS && \
     echo stable_diffusion_tag=${stable_diffusion_tag} && \
@@ -81,7 +78,17 @@ RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubunt
     cd .. && \
     mkdir stable-diffusion.cpp/build && \
     cd stable-diffusion.cpp/build && \
-    cmake .. -G "Ninja" -DCMAKE_C_COMPILER=amdclang -DSD_BUILD_SHARED_LIBS=ON -DCMAKE_CXX_COMPILER=amdclang++ -DSD_HIPBLAS=ON -DCMAKE_BUILD_TYPE=Release -DGPU_TARGETS=$GPU_TARGETS -DAMDGPU_TARGETS=$GPU_TARGETS -DCMAKE_INSTALL_RPATH='$ORIGIN;$ORIGIN/../lib' -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
+    cmake .. -G "Ninja" \
+    -DCMAKE_HIP_COMPILER="$(hipconfig -l)/clang" \
+    -DCMAKE_HIP_FLAGS="-mllvm --amdgpu-unroll-threshold-local=600" \
+    -DSD_BUILD_SHARED_LIBS=ON \
+    -DSD_HIPBLAS=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DHIP_PLATFORM=amd \
+    -DGPU_TARGETS=$GPU_TARGETS \
+    -DCMAKE_INSTALL_RPATH='$ORIGIN;$ORIGIN/../lib' \
+    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON  && \
     cmake --build . --config Release && \
     mkdir -p /opt/stable-diffusion/bin && \
     mkdir -p /opt/stable-diffusion/lib && \
@@ -116,13 +123,11 @@ FROM rocm-dev as llama-cpp
 
 WORKDIR /app
 
-ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+ARG GPU_TARGETS="gfx1200;gfx1201"
 ARG llama_build
 RUN echo llama_build=$llama_build && \
-#    git clone --branch ${llama_build} --depth 1 https://github.com/domvox/llama.cpp-turboquant-hip.git llama.cpp && \
     git clone --branch ${llama_build} --depth 1 https://github.com/ggml-org/llama.cpp.git && \
     cd llama.cpp && \
-#    export build_int="1" && \
     export build_int=$(echo "$llama_build" | sed 's/[[:alpha:]]//g') && \
     HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)" \
     cmake -S . -B build \
@@ -131,7 +136,9 @@ RUN echo llama_build=$llama_build && \
         -DCMAKE_INSTALL_RPATH='$ORIGIN;$ORIGIN/../lib' \
         -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
         -DGGML_HIP_ROCWMMA_FATTN=ON \
-        -DAMDGPU_TARGETS="$GPU_TARGETS" \
+#        -DAMDGPU_TARGETS="$GPU_TARGETS" \
+        -DGPU_TARGETS="$GPU_TARGETS" \
+        -DHIP_PLATFORM=amd \
         -DGGML_BACKEND_DL=ON -DGGML_CPU_ALL_VARIANTS=ON \
         -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_TESTS=OFF \
     && cmake --build build --config Release -j$(nproc) && \
@@ -232,12 +239,15 @@ RUN \
     groupadd -g 777 render_host && \
     # but also add the root user to every possible group (probably needed for podman local run)
     usermod -aG video_host,render_host,video,render root && \
-    echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rocm/bin:/opt/llama/bin:/opt/stable-diffusion/bin\"" > /etc/environment && \
+    echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rocm/core/bin:/opt/llama/bin:/opt/stable-diffusion/bin\"" > /etc/environment && \
     echo "LLAMA_CACHE=/root/data/models" >> /etc/environment && \
     echo "ROCR_VISIBLE_DEVICES=0" >> /etc/environment && \
     echo "HF_HUB_CACHE=/root/data/models/" >> /etc/environment && \
-    echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
-    echo "/opt/rocm/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
+    echo "/opt/rocm/core/lib/rocm_sysdeps/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
+    echo "/opt/rocm/core/lib" >> /etc/ld.so.conf.d/10-rocm.conf
+#    echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
+#    echo "/opt/rocm/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
+#export LD_LIBRARY_PATH=/opt/rocm/core/lib/rocm_sysdeps/lib:/opt/rocm/core/lib && \
 
 RUN ln -s /opt/llama/vulkan/bin/llama-server /usr/local/bin/llama-server-vulkan && \
     ln -s /opt/stable-diffusion/vulkan/bin/sd-server /usr/local/bin/sd-server-vulkan
