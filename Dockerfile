@@ -2,8 +2,8 @@ FROM ubuntu:24.04 as rocm-base
 
 USER root
 WORKDIR /root
-ARG ROCM_VERSION=7.2.2
-# Install "minimum" dependencies (4GB?), register ROCm 7.2.2 repository, and install runtime + tools
+ARG ROCM_VERSION=7.2.3
+# Install "minimum" dependencies (4GB?), register ROCm 7.2.3 repository, and install runtime + tools
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
