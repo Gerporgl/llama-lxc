@@ -37,12 +37,13 @@ jobs:
         LLAMA_VERSION=$(cat llama_version.txt)
         SD_VERSION=$(cat sd_version.txt)
         ROCM_VERSION=$(cat rocm_version.txt)
+        LLAMA_SWAP_VERSION=$(cat llama_swap_version.txt)
         IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
         IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
         VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
         [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
         [ "$VERSION" == "main" ] && VERSION=latest
-        VERSION="${VERSION}-rocm-${ROCM_VERSION}-llama-${LLAMA_VERSION}-sd-${SD_VERSION}"
+        VERSION="${VERSION}-rocm-${ROCM_VERSION}-llama-swap-${LLAMA_SWAP_VERSION}-llama-${LLAMA_VERSION}-sd-${SD_VERSION}"
         echo IMAGE_ID=$IMAGE_ID
         echo VERSION=$VERSION
         docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
