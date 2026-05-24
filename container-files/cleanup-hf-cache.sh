@@ -109,7 +109,11 @@ done
 # 4. Results and Confirmation
 if [ ${#ALL_DELETE_PATHS[@]} -eq 0 ]; then
     clean_blob
-    echo "No unnecessary files found in cache. Everything matches your keep list."
+    echo "No unnecessary models or quant variants found in cache. Everything matches your keep list."
+    echo "Now running hf cache prune, this can find old unused layers and free up some space."
+
+    hf cache prune
+
     exit 0
 fi
 
