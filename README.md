@@ -14,13 +14,13 @@ This solution greatly improves the sysadmin user experience, and is probably the
   - This is mostly for running this locally for testing
 - Proxmox VE (for Proxmox deployment)
   - This is the intended way of deploying this solution
-  - Note: Most likely Requires Proxmox VE 9.1.7+ updated to latest kernel and firmware ("no subcription" or "test" may be needed), to properly support ROCm 7.2.2 and above on gfx1200 hardware
+  - Note: Most likely Requires Proxmox VE 9.1.7+ updated to latest kernel and firmware ("no subcription" or "test" may be needed), to properly support ROCm 7.2.x and above on gfx1200 hardware
   - There is no need to install ROCm or anything special on the host for this to work, simply updating to the latest kernel and firmware packages seems sufficient
 
 ### Important notes / updates
 
  * Vulkan + ROCm binaries now included:
-   * The container image now include both llama.cpp and stable-diffusion vulkan binaries as well as ROCm 7.2.2
+   * The container image now include both llama.cpp and stable-diffusion vulkan binaries as well as ROCm 7.2.3
    * You can change your config.yaml to point to these binaries, their location can be seen in the config.default.yaml, and a macro is already defined if you want to use them.
    * WARNING! Just be aware that if you mix both (use ROCm and vulkan at the same time), based on my experience, this could cause the amdgpu to have a hard crash (ring buffer errors in dmesg), and need a full card power off (host computer turned off completely), in order to recover from this.
 
@@ -29,8 +29,8 @@ This solution greatly improves the sysadmin user experience, and is probably the
     * Previously this would have caused stable-diffusion to exit silently while generating an image if the gpu did not match. This should now work properly.
 
   * Latest stable-diffusion, patched with stable-ui:
-    * Recently (April 11, 2026), stable-diffusion have started to include a new webui (sdcpp-webui), instead of their modified fork of stable-ui
-    * The new UI does not appear to work yet out of the box with llama-swap, and has less features than stable-ui
+    * On April 11 2026, stable-diffusion started to include a different webui (sdcpp-webui), instead of their original modified fork of stable-ui
+    * This UI did not appear to work well out of the box with llama-swap, and had less features than stable-ui
     * For the time being, we get the latest source from stable-diffusion to compile it, but we patch it with the old stable-ui submodule.
 
 ### How to use this container
@@ -56,15 +56,15 @@ There are some tricks also to enable offically unsupported amd gpus, using HSA_O
 **Option 2: Proxmox Deployment**
 
 Pre requisites:
- - First of all, you will need to push your image somewhere to your own OCI registry (update: some pre-build images are now available on github ghcr.io)
+ - First of all, you will need to push your image somewhere to your own OCI registry, or use one of the pre-build images availabel in this gh repo (ghcr.io)
  - In Proxmox VE, you need to go to your storage (i.e.: local), then under CT Templates, click "Pull from OCI Registry"
  - Enter the URL of the registry where this image is located
+   - If using the pre-build ghcr.io images, you should be able to enter ghcr.io/gerporgl/llama-lxc:latest (or ghcr.io/gerporgl/llama-lxc then "Query Tags" and select latest)
    - Pro tip: You can also use "Distribution registry" running as a CT container on your Proxmox local network as a simple solution for convenience along with registry-ui
-   - Alternatively, you can now download the image from ghcr.io/gerporgl/llama-lxc:latest
  - Proxmox should then download the container image locally
  - Also, very important!:
    - The container is designed to use a second volume to store models and data
-   - You need to create this additonal volume in Proxmox after the initial container was created (so don't start it right way!), and mount it under /root/data
+   - You need to create this additonal volume in Proxmox after the initial container was created (so don't start it right away!), and mount it under /root/data
    - With the default configs, models are designed to be stored under /root/data/models.
    - The main partition is relatively small (16GB), so you will run out of space soon if you don't create an additional volume. 128GB or more is recommended... depending on your usage, however it is also easy to grow the zfs size afterware without even restarting anything.
    - The use of a separate volume makes it easy to keep models and your config when you update the base image.
@@ -77,7 +77,7 @@ If you successfully downloaded the container image to your Proxmox local storage
 ```
 You can check the script and adjust the container image location filename, it will likely be different from what I used. There is also more technical information in the script itself about what it does exactly.
 
-Alternatively, you can create the LXC container yourself, or perhaps to start with, and then manually edit the lxc config file to pass the proper devices and set groups IDs and cgroupv2 if you are already familiar with this.
+Alternatively, you can create the LXC container yourself, or perhaps to start with, and then manually edit the lxc config file to pass the proper GPU devices and set groups IDs and cgroupv2 if you are already very familiar with this.
 
 The script can also be run after the CT was created manually in Proxmox UI, it will update the existing LXC config to set all required permissions and devices required. Make sure you specify the correct container ID that you want to have updated or created!
 
@@ -157,6 +157,7 @@ Models that are listed in your config.yaml but commented still counts as a refer
 
 The script also always try to remove unlinked blob files (without any confirmation...), hopefully this should be safe for most use cases. This was needed since there is no easy way to remove only one quant variant currently with hf cache rm (it can only delete the entire model and all quants).
 
+You can also run hf cache prune to remove old blob layers, although the cleanup-hf-cache.sh was updated to now always call hf cache prune even if models match the keep list, so you can simply run cleanup-hf-cache.sh to delete and reclaim most unused model space.
 
 ## See Also
 
