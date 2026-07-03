@@ -20,7 +20,7 @@ This solution greatly improves the sysadmin user experience, and is probably the
 ### Important notes / updates
 
  * Vulkan + ROCm binaries now included:
-   * The container image now include both llama.cpp and stable-diffusion vulkan binaries as well as ROCm 7.2.3
+   * The container image now include both llama.cpp and stable-diffusion vulkan binaries as well as ROCm 7.2.4
    * You can change your config.yaml to point to these binaries, their location can be seen in the config.default.yaml, and a macro is already defined if you want to use them.
    * WARNING! Just be aware that if you mix both (use ROCm and vulkan at the same time), based on my experience, this could cause the amdgpu to have a hard crash (ring buffer errors in dmesg), and need a full card power off (host computer turned off completely), in order to recover from this.
 
