@@ -2,10 +2,9 @@ FROM ubuntu:24.04 as rocm-base
 
 USER root
 WORKDIR /root
-ARG ROCM_VERSION=7.2.3
+ARG ROCM_VERSION=7.2.4
 # Install "minimum" dependencies (4GB?), register ROCm 7.2.3 repository, and install runtime + tools
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     gnupg2 \
@@ -63,7 +62,6 @@ ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
 ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     apt update && apt install -y \
     zip \
     nodejs npm && \
@@ -156,7 +154,6 @@ RUN echo llama_build=$llama_build && \
 FROM rocm-base as llama-lxc 
 
 RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
     apt-get update && \
     apt-get remove -y unminimize && \
     apt-get install -y --no-install-recommends \ 
