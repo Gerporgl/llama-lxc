@@ -2,29 +2,29 @@ FROM ubuntu:24.04 as rocm-base
 
 USER root
 WORKDIR /root
-ARG ROCM_VERSION=7.12
-# Install "minimum" dependencies (4GB?), register ROCm 7.2.2 repository, and install runtime + tools
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+ARG ROCM_VERSION=7.14
+# Install "minimum" dependencies (4GB?), register ROCm repository, and install runtime + tools
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
-    gnupg2 \
+    gnupg2 gpg \
     ca-certificates \
     libatomic1 libquadmath0
 RUN \
     mkdir --parents --mode=0755 /etc/apt/keyrings \
-    && curl -fsSL https://repo.amd.com/rocm/packages/gpg/rocm.gpg | gpg --dearmor | tee /etc/apt/keyrings/amdrocm.gpg > /dev/null \
-    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/amdrocm.gpg] https://repo.amd.com/rocm/packages/ubuntu2404 stable main" \
+    && curl -fsSL https://repo.amd.com/rocm/packages-multi-arch/gpg/rocm.gpg | gpg --dearmor | tee /etc/apt/keyrings/amdrocm.gpg > /dev/null \
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/amdrocm.gpg] https://repo.amd.com/rocm/packages-multi-arch/ubuntu2404 stable main" \
     | tee /etc/apt/sources.list.d/rocm.list \
     \
     # 3. Pin the repository to prioritize official AMD packages
     && echo 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' \
     | tee /etc/apt/preferences.d/rocm-pin-600 \
     \
+    && apt update && apt list | grep "amdrocm" \
     # 4. Install only what's needed for llama-server and monitoring
     && apt-get update && apt-get install -y --no-install-recommends \
-    amdrocm${ROCM_VERSION}-gfx120x \
-    amdrocm-opencl7.12 \
+    amdrocm${ROCM_VERSION}-gfx1200 \
+#    amdrocm${ROCM_VERSION}-gfx1030 \
+    amdrocm-opencl7.14 \
     \
     # 5. Cleanup to keep image slim
     && apt-get purge -y gnupg2 \
@@ -32,7 +32,7 @@ RUN \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 FROM rocm-base as rocm-dev
-ARG ROCM_VERSION=7.12
+ARG ROCM_VERSION=7.14
 ENV ROCM_PATH=/opt/rocm/core
 ENV PATH=$PATH:$ROCM_PATH/bin
 RUN apt update && apt install -y \
@@ -40,9 +40,10 @@ RUN apt update && apt install -y \
     libssl-dev curl libxcb-xinput0 libxcb-xinerama0 libxcb-cursor-dev libvulkan-dev glslc spirv-headers \
     # ROCm packages
     # We have to include all major family of package that we want to support
-    # Right now gfx130x does not exists yet...
+    # Right now gfx103x does not exists yet...
     # We have to find a way to map this to oru GPU_TARGETS, which are more specific.
-    amdrocm-core-dev${ROCM_VERSION}-gfx120x \
+    amdrocm-core-dev${ROCM_VERSION}-gfx1200 \
+#    amdrocm-core-dev${ROCM_VERSION}-gfx1030 \
     #amdrocm-core-sdk-gfx120x \
     # build essentials
     build-essential \
@@ -58,10 +59,8 @@ RUN apt update && apt install -y \
 FROM rocm-dev as stable-diffusion
 ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
-ARG GPU_TARGETS="gfx1200;gfx1201"
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    apt update && apt install -y \
+ARG GPU_TARGETS="gfx1200"
+RUN apt update && apt install -y \
     zip \
     nodejs npm && \
     curl -fsSL https://get.pnpm.io/install.sh | ENV="$HOME/.bashrc" SHELL="$(which bash)" bash - && \
@@ -123,7 +122,7 @@ FROM rocm-dev as llama-cpp
 
 WORKDIR /app
 
-ARG GPU_TARGETS="gfx1200;gfx1201"
+ARG GPU_TARGETS="gfx1200"
 ARG llama_build
 RUN echo llama_build=$llama_build && \
     git clone --branch ${llama_build} --depth 1 https://github.com/ggml-org/llama.cpp.git && \
@@ -162,9 +161,7 @@ RUN echo llama_build=$llama_build && \
 # Use our own rocm base and install our lxc base system and service
 FROM rocm-base as llama-lxc 
 
-RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    sed -i 's|http://security.ubuntu.com/ubuntu/|http://ubuntu.linux.n0c.ca/ubuntuarchive/|g' /etc/apt/sources.list.d/ubuntu.sources && \
-    apt-get update && \
+RUN apt-get update && \
     apt-get remove -y unminimize && \
     apt-get install -y --no-install-recommends \ 
     ca-certificates \
