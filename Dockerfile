@@ -230,6 +230,7 @@ RUN \
     echo "LLAMA_CACHE=/root/data/models" >> /etc/environment && \
     echo "ROCR_VISIBLE_DEVICES=0" >> /etc/environment && \
     echo "HF_HUB_CACHE=/root/data/models/" >> /etc/environment && \
+    echo "HF_XET_HIGH_PERFORMANCE=1" >> /etc/environment && \
     echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
     echo "/opt/rocm/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
 
