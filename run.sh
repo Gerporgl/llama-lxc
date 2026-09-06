@@ -15,10 +15,7 @@ fi
 
 podman=$(podman -v 2>/dev/null | grep -c -i podman)
 if [ "$podman" == "1" ]; then
-    # This is to keep the user id the same as in the container for the mounted file system,
-    # so the steam user is id 1000, and may be the same as the local user, so that is easier to manage
-    # There are others ways of doing that, and this is optional
-	opts="--userns=keep-id"
+	opts="--userns=keep-id:uid=0,gid=0"
 	command=podman
 	echo "You have podman installed"
     podman rm -fi $CONTAINER_NAME
@@ -52,7 +49,7 @@ $command create --rm -it \
     -p 0.0.0.0:8888:8080 \
     $opts \
     --device /dev/kfd --device /dev/dri \
-    -v `pwd`/data:/root/data \
+    -v `pwd`/data:/root/data:U \
     --name $CONTAINER_NAME \
     $IMAGE_NAME
 
