@@ -386,12 +386,14 @@ optimize_container() {
         if [ -d "/$ZFS_POOL_NAME/data/subvol-$CTID-disk-1" ]; then
             zfs set xattr=sa atime=off $ZFS_POOL_NAME/data/subvol-$CTID-disk-1
             zfs set recordsize=1M $ZFS_POOL_NAME/data/subvol-$CTID-disk-1
+            zfs set sync=disabled $ZFS_POOL_NAME/data/subvol-$CTID-disk-1
             log_info "ZFS optimizations applied to data volume."
         else
             echo "$ZFS_POOL_NAME/data/subvol-$CTID-disk-1 does not exists. You should rerun this script after you created it."
         fi
         if [ -d "/$ZFS_POOL_NAME/data/subvol-$CTID-disk-0" ]; then
             zfs set xattr=sa $ZFS_POOL_NAME/data/subvol-$CTID-disk-0
+            zfs set sync=disabled $ZFS_POOL_NAME/data/subvol-$CTID-disk-0
             log_info "ZFS optimizations applied to rootfs volume."
         else
             echo "$ZFS_POOL_NAME/data/subvol-$CTID-disk-0 does not exists! This is unexpected."
