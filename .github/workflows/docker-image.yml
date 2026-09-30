@@ -3,7 +3,13 @@ name: Docker Image CI
 on:
   push:
     tags: [ "v*" ]
-
+  schedule:
+    - cron: '37 22 * * 5'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Force build+push even if the tag already exists on ghcr.io
+        type: boolean
 env:
   IMAGE_NAME: llama-lxc
 
