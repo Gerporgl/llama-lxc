@@ -1,9 +1,9 @@
-FROM ubuntu:24.04 as rocm-base
+FROM ubuntu:24.04 as rocm-dev
 
 USER root
 WORKDIR /root
 ARG ROCM_VERSION=7.2.4
-# Install "minimum" dependencies (4GB?), register ROCm 7.2.3 repository, and install runtime + tools
+
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     curl \
     gnupg2 \
@@ -22,21 +22,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && echo 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' \
     | tee /etc/apt/preferences.d/rocm-pin-600 \
     \
-    # 4. Install only what's needed for llama-server and monitoring
-    && apt-get update && apt-get install -y --no-install-recommends \
-    rocm-hip-runtime \
-    amd-smi-lib \
-    rocminfo \
-    hipblas \
-    rocblas \
-    \
-    # 5. Cleanup to keep image slim
-    && apt-get purge -y gnupg2 \
-    && apt-get autoremove -y \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-FROM rocm-base as rocm-dev
-RUN apt update && apt install -y \
+    && apt update && apt install -y \
     # Vulkan related dev packages
     libssl-dev curl libxcb-xinput0 libxcb-xinerama0 libxcb-cursor-dev libvulkan-dev glslc spirv-headers \
     # ROCm packages
@@ -147,6 +133,53 @@ RUN echo llama_build=$llama_build && \
     mkdir -p /opt/llama/vulkan/bin && \
     mv /app/llama.cpp/build/bin/* /opt/llama/vulkan/bin/ && \
     rm /app -rf
+
+
+FROM ubuntu:24.04 as rocm-base
+
+USER root
+WORKDIR /root
+ARG ROCM_VERSION=7.2.4
+ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
+# Install "minimum" dependencies (4GB?), register ROCm 7.2.3 repository, and install runtime + tools
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg2 \
+    ca-certificates \
+    && mkdir -p /etc/apt/keyrings \
+    \
+    # 1. Download and install the official AMD GPG key
+    && curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null \
+    \
+    # 2. Register the ROCm repository for Ubuntu 24.04
+    && echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/$ROCM_VERSION noble main" \
+
+    | tee /etc/apt/sources.list.d/rocm.list \
+    \
+    # 3. Pin the repository to prioritize official AMD packages
+    && echo 'Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600' \
+    | tee /etc/apt/preferences.d/rocm-pin-600 \
+    \
+    # 4. Install only what's needed for llama-server and monitoring
+    && apt-get update && apt-get install -y --no-install-recommends \
+    rocm-hip-runtime \
+    amd-smi-lib \
+    rocminfo \
+    hipblas \
+    \
+    && rm -Rf /opt/rocm/amdgcn \
+    && rm -Rf /opt/rocm/llvm \
+    && rm -Rf /opt/rocm/lib/llvm \
+    && rm -Rf /opt/rocm/lib/cmake \
+    && rm -Rf /opt/rocm/lib/rocblas \
+    && rm -Rf /opt/rocm/lib/hipblaslt/library/*gfx11* \
+    && rm -Rf /opt/rocm/lib/hipblaslt/library/*gfx1201* \
+    && rm -Rf /opt/rocm/lib/hipblaslt/library/*gfx9* \
+    # 5. Cleanup to keep image slim
+    && apt-get purge -y gnupg2 \
+    && apt-get autoremove -y \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 
 # Use our own rocm base and install our lxc base system and service
 FROM rocm-base as llama-lxc 
