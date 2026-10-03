@@ -172,9 +172,15 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && rm -Rf /opt/rocm/lib/llvm \
     && rm -Rf /opt/rocm/lib/cmake \
     && rm -Rf /opt/rocm/lib/rocblas \
-    && rm -Rf /opt/rocm/lib/hipblaslt/library/*gfx11* \
-    && rm -Rf /opt/rocm/lib/hipblaslt/library/*gfx1201* \
-    && rm -Rf /opt/rocm/lib/hipblaslt/library/*gfx9* \
+    # 4b. Trim hipblaslt libraries for gfx families not targeted by GPU_TARGETS
+    #     - gfx1200 / gfx1201 are exact targets; gfx9* / gfx11* are families (prefix match)
+    && LIB=/opt/rocm/lib/hipblaslt/library \
+    && { \
+         case ";$GPU_TARGETS;" in *";gfx1200;"*) : ;; *) rm -Rf "$LIB"/*gfx1200* ;; esac ; \
+         case ";$GPU_TARGETS;" in *";gfx1201;"*) : ;; *) rm -Rf "$LIB"/*gfx1201* ;; esac ; \
+         case ";$GPU_TARGETS;" in *";gfx9"*)    : ;; *) rm -Rf "$LIB"/*gfx9* ;; esac ; \
+         case ";$GPU_TARGETS;" in *";gfx11"*)   : ;; *) rm -Rf "$LIB"/*gfx11* ;; esac ; \
+       } \
     # 5. Cleanup to keep image slim
     && apt-get purge -y gnupg2 \
     && apt-get autoremove -y \
