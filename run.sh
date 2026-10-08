@@ -49,7 +49,7 @@ $command create --rm -it \
     -p 0.0.0.0:8888:8080 \
     $opts \
     --device /dev/kfd --device /dev/dri \
-    -v `pwd`/home-root:/root:U \
+    -v `pwd`/data:/root/data:U \
     --name $CONTAINER_NAME \
     $IMAGE_NAME
 
@@ -62,6 +62,7 @@ echo "Copied current password file"
 awk -v password=$(echo $root_password | openssl passwd -1 -stdin) \
       'BEGIN{FS=OFS=":"} $1=="root" {$2=password}1' $tmpfile > $tmpfile_out
 $command cp ~/.ssh/id_ed25519.pub $CONTAINER_NAME:/root/.ssh/authorized_keys
+$command cp ~/.ssh/id_ecdsa.pub $CONTAINER_NAME:/root/.ssh/authorized_keys
 echo "Copied ssh authorized keys"
 $command cp $tmpfile_out $CONTAINER_NAME:/etc/shadow
 echo "Copied new password"
