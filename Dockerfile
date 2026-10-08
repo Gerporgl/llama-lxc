@@ -42,7 +42,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && apt-get autoremove -y \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-FROM rocm-dev as stable-diffusion
+FROM rocm-dev:latest as stable-diffusion
 ARG stable_diffusion_tag
 # Build stable-diffusion.cpp (sd-server and sd-cli)
 ARG GPU_TARGETS="gfx1151;gfx1200;gfx1201;gfx1100;gfx1101;gfx1102;gfx1030;gfx1031;gfx1032"
@@ -94,7 +94,7 @@ RUN apt update && apt install -y \
     /tmp/* \
     /root/.local/share/pnpm
 
-FROM rocm-dev as llama-cpp
+FROM rocm-dev:latest as llama-cpp
 
 WORKDIR /app
 
@@ -105,11 +105,11 @@ RUN echo llama_build=$llama_build && \
     git clone --branch ${llama_build} --depth 1 https://github.com/ggml-org/llama.cpp.git && \
     cd llama.cpp && \
 #    export build_int="1" && \
-    export build_int=$(echo "$llama_build" | sed 's/[[:alpha:]]//g') && \
+    export build_int=$(echo "$llama_build" | sed 's/[a-zA-Z.]//g') && \
     HIPCXX="$(hipconfig -l)/clang" HIP_PATH="$(hipconfig -R)" \
     cmake -S . -B build \
-        -DLLAMA_BUILD_NUMBER="$build_int" \
         -DGGML_HIP=ON \
+        -DLLAMA_BUILD_NUMBER="$build_int" \
         -DCMAKE_INSTALL_RPATH='$ORIGIN;$ORIGIN/../lib' \
         -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
         -DGGML_HIP_ROCWMMA_FATTN=ON \
@@ -188,11 +188,11 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 
 
 # Use our own rocm base and install our lxc base system and service
-FROM rocm-base as llama-lxc 
+FROM rocm-base:latest as llama-lxc
 
 RUN apt-get update && \
     apt-get remove -y unminimize && \
-    apt-get install -y --no-install-recommends \ 
+    apt-get install -y --no-install-recommends \
     ca-certificates \
     software-properties-common && \
     apt-get install -y --no-install-recommends \
@@ -203,6 +203,8 @@ RUN apt-get update && \
     # For convenience, instal nano
     nano \
     jq yq \
+    build-essential \
+    git \
     # Network tools such as ping and host command
     iputils-ping \
     bind9-host \
@@ -225,7 +227,7 @@ RUN apt-get update && \
     rm /etc/update-motd.d/10* && rm /etc/update-motd.d/50* && rm /etc/update-motd.d/60* && \
     # Enable some service and remove a bunch of unwanted automatic timers
     # Updates will have to be run manually or with new containers builds
-    systemctl enable systemd-networkd.service && \ 
+    systemctl enable systemd-networkd.service && \
     rm /etc/systemd/system/timers.target.wants/apt* && \
     rm /etc/systemd/system/timers.target.wants/dpkg* && \
     rm /etc/systemd/system/timers.target.wants/e2scrub* && \
@@ -240,7 +242,7 @@ RUN apt-get update && \
     mkdir -p /home/ubuntu/.ssh && chown ubuntu:ubuntu /home/ubuntu/.ssh && \
     sed -i -e '2iTERM=xterm-color\\' /root/.profile && \
     cp /root/.profile /home/ubuntu/.profile && \
-    cp /root/.bashrc /home/ubuntu/.bashrc 
+    cp /root/.bashrc /home/ubuntu/.bashrc
 
 # Get llama-swap binary directly from their github release download
 # It seems simpler that way, and no extra delay for getting the latest llama-cpp, which is the most important
@@ -251,10 +253,10 @@ RUN mkdir -p /opt/llama/llama-swap && \
     mv ./llama-swap/llama-swap /usr/local/bin/ && mv ./llama-swap/LICENSE.md /opt/llama/llama-swap/ && rm -rf llama-swap.tar.gz llama-swap
 
 # Copy llama.cpp binaries that we just build in a previous stage
-COPY --from=llama-cpp /opt/llama /opt/llama
+COPY --from=llama-cpp:latest /opt/llama /opt/llama
 
 # Copy the stable-diffusion binaries that we compiled in a previous stage
-COPY --from=stable-diffusion /opt/stable-diffusion /opt/stable-diffusion
+COPY --from=stable-diffusion:latest /opt/stable-diffusion /opt/stable-diffusion
 
 RUN \
     # Create our own expected gid for video and render
@@ -284,11 +286,13 @@ ADD --chmod=755 container-files/cleanup-hf-cache.sh /usr/local/bin/
 
 ADD container-files/llama-swap.service /etc/systemd/system/
 ADD container-files/config.default.yaml /opt/llama/llama-swap
-RUN mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
+RUN rm -rf /root/.cache && \
+    mkdir -p /root/.cache && touch /root/.cache/motd.legal-displayed && \
     systemctl enable llama-swap.service && \
     systemctl enable prepare-llama.service && \
-    ln -s /etc/llama-lxc-motd /etc/update-motd.d/10-llama-lxc-motd
-
+    ln -s /etc/llama-lxc-motd /etc/update-motd.d/10-llama-lxc-motd && \
+    mkdir -p /opt/root-home-default && \
+    cp -a /root/. /opt/root-home-default/
 
 STOPSIGNAL SIGRTMIN+3
 

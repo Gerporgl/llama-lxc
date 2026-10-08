@@ -64,12 +64,12 @@ Pre requisites:
  - Proxmox should then download the container image locally
  - Also, very important!:
    - The container is designed to use a second volume to store models and data
-   - You need to create this additonal volume in Proxmox after the initial container was created (so don't start it right away!), and mount it under /root/data
+   - You need to create this additonal volume in Proxmox after the initial container was created (so don't start it right away!), and mount it under /root/data. You can also mount it under /root home folder directly if you want to preserve root user bash history, etc., a default skeleton will be seeded if it is deemed empty.
    - With the default configs, models are designed to be stored under /root/data/models.
    - The main partition is relatively small (16GB), so you will run out of space soon if you don't create an additional volume. 128GB or more is recommended... depending on your usage, however it is also easy to grow the zfs size afterware without even restarting anything.
    - The use of a separate volume makes it easy to keep models and your config when you update the base image.
    - The config is stored under /root/data/config.yaml, so it should be carried over when you update the base image as well
-   - The root folder contains a default config (/root/config.default.yaml), and if no config exists under /root/data or the volume is empty, it will be automatically copied before llama-swap starts.
+   - The root folder contains a default config (/opt/llama/llama-swap/config.default.yaml), and if no config exists under /root/data or the volume is empty, it will be automatically copied before llama-swap starts.
 
 If you successfully downloaded the container image to your Proxmox local storage, you should now be able to run the automated container setup script on the host by running it like this (you need to copy this to the host, for example under /root folder):
 ```bash
@@ -163,4 +163,3 @@ You can also run hf cache prune to remove old blob layers, although the cleanup-
 
 - [llama-Swap](https://github.com/mostlygeek/llama-swap) documentation
 - [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp/blob/master/docs/z_image.md) z-image-turbo documentation and model download location
-

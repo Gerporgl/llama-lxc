@@ -23,7 +23,7 @@ else
 fi
 
 export rocm_version="7.2.4"
-export llama_build=$(curl -s "https://api.github.com/repos/ggml-org/llama.cpp/releases" | jq -r '[.[] | select(.prerelease == true)][0].tag_name')
+export llama_build=$(curl -s "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest" | jq -r '[.][0].tag_name')
 export stable_diffusion_tag=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest | jq -r '.tag_name') && \
 export llama_swap_version=$(curl -s https://api.github.com/repos/mostlygeek/llama-swap/releases/latest | jq -r '.tag_name')
 
@@ -47,11 +47,28 @@ if [[ "$GPU_TARGETS" ]];then
 fi
 
 DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
-	--target llama-lxc \
-	--build-arg llama_build=$llama_build \
-	--build-arg stable_diffusion_tag=$stable_diffusion_tag \
-	--build-arg llama_swap_build=$llama_swap_build \
+	--target rocm-dev \
 	--build-arg ROCM_VERSION=$rocm_version \
+	-t rocm-dev:latest .
+
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
+	--target stable-diffusion \
+	--build-arg stable_diffusion_tag=$stable_diffusion_tag \
+	-t stable-diffusion:latest .
+
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
+	--target llama-cpp \
+	--build-arg llama_build=$llama_build \
+	-t llama-cpp:latest .
+
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
+	--target rocm-base \
+	--build-arg ROCM_VERSION=$rocm_version \
+	-t rocm-base:latest .
+
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
+	--target llama-lxc \
+	--build-arg llama_swap_build=$llama_swap_build \
 	-t llama-lxc:latest .
 
 set +e

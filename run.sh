@@ -4,7 +4,7 @@
 # Run a base systemd-container
 
 # This is mostly an example on how to run the container locally
-# setting the root password at run time here is for convenience 
+# setting the root password at run time here is for convenience
 # for testing, without baking in the root password in the image itself
 # By default, if not set, the root password is not set, and there is no way to access anything
 # This is the default secure behavior
@@ -49,7 +49,7 @@ $command create --rm -it \
     -p 0.0.0.0:8888:8080 \
     $opts \
     --device /dev/kfd --device /dev/dri \
-    -v `pwd`/data:/root/data:U \
+    -v `pwd`/home-root:/root:U \
     --name $CONTAINER_NAME \
     $IMAGE_NAME
 

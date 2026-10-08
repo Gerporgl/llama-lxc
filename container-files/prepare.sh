@@ -1,5 +1,13 @@
 #!/bin/bash
 
+
+if [[ ! -f  "/root/.profile" ]]; then
+    echo "Uninitialized root home folder detected. Seeding default profile files..."
+    cp -a /opt/root-home-default/. /root/
+else
+    echo "Root home folder already initialized."
+fi
+
 mkdir -p /root/data
 
 if [[ ! -f  "/root/data/config.yaml" ]]; then
