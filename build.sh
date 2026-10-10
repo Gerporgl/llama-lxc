@@ -12,15 +12,6 @@ fi
 
 set -e
 
-
-# The stages of this Dockerfile are built one by one and each is tagged
-# <stage>:latest, and the later stages refer to those *local* images
-# (FROM rocm-dev:latest / COPY --from=llama-cpp:latest ...).
-# A global --pull would make the engine resolve EVERY FROM against a registry,
-# so docker tries to pull rocm-dev:latest (and the other stage tags) from
-# docker.io and fails with "pull access denied", which is what broke the
-# GitHub Actions build. Therefore the pull flag is only ever passed to the two
-# stages that actually start from a public image (ubuntu:24.04).
 base_pull_args=""
 if [[ "$1" == "pull" ]]; then
 	if [[ "$CT_TOOL" == "podman" ]]; then
