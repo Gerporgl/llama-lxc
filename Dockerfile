@@ -294,6 +294,19 @@ RUN rm -rf /root/.cache && \
     mkdir -p /opt/root-home-default && \
     cp -a /root/. /opt/root-home-default/
 
+# Full component version string (e.g. rocm-7.2.4-llama-swap-v0.7.4-llama-b11539-sd-master-951-f89d9b1),
+# built by build.sh and stored as the image version so `podman inspect` can
+# read it at runtime. It also overrides the org.opencontainers.image.version
+# (24.04) and the title/description inherited from the ubuntu base image.
+# Declared at the very end on purpose: this ARG changes on every build and a
+# changed ARG busts every layer of the stage it is declared in, so keeping it
+# here limits the invalidation to this last metadata step.
+ARG IMAGE_VERSION
+LABEL org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.description="" \
+      org.opencontainers.image.title="" \
+      org.opencontainers.image.created=""
+
 STOPSIGNAL SIGRTMIN+3
 
 ENTRYPOINT ["/sbin/init"]

@@ -52,6 +52,13 @@ echo llama_build=$llama_build
 echo stable_diffusion_tag=$stable_diffusion_tag
 echo llama_swap_build=$llama_swap_build
 
+# Full component version string: used as the OCI version label inside the image
+# (ARG IMAGE_VERSION, last stage of the Dockerfile) and as the tag suffix that
+# the GitHub workflow pushes to ghcr.io. Single source of truth for both.
+image_version="rocm-${rocm_version}-llama-swap-${llama_swap_version}-llama-${llama_build}-sd-${stable_diffusion_tag}"
+echo "$image_version" > image_version.txt
+echo image_version=$image_version
+
 if [[ "$llama_build" == "" || "$llama_build" == "stable_diffusion_tag" ]]; then
 	echo "ERROR: Unable to get the latest builds info!"
 	exit 1
@@ -86,6 +93,7 @@ DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args $base_pull_args
 DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
 	--target llama-lxc \
 	--build-arg llama_swap_build=$llama_swap_build \
+	--build-arg IMAGE_VERSION=$image_version \
 	-t llama-lxc:latest .
 
 set +e
