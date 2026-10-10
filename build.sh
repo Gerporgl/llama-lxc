@@ -13,14 +13,26 @@ fi
 set -e
 
 
-if [[ "$CT_TOOL" == "podman " ]]; then
-	extra_args="--pull=newer"
-else
-	if [[ "$1" == "pull" ]]; then
-		echo "Force pulling new base images..."
-		extra_args="--pull"
+# The stages of this Dockerfile are built one by one and each is tagged
+# <stage>:latest, and the later stages refer to those *local* images
+# (FROM rocm-dev:latest / COPY --from=llama-cpp:latest ...).
+# A global --pull would make the engine resolve EVERY FROM against a registry,
+# so docker tries to pull rocm-dev:latest (and the other stage tags) from
+# docker.io and fails with "pull access denied", which is what broke the
+# GitHub Actions build. Therefore the pull flag is only ever passed to the two
+# stages that actually start from a public image (ubuntu:24.04).
+base_pull_args=""
+if [[ "$1" == "pull" ]]; then
+	if [[ "$CT_TOOL" == "podman" ]]; then
+		echo "Force pulling new base images... (podman --pull=newer, base stages only)"
+		base_pull_args="--pull=newer"
+	else
+		echo "Force pulling new base images... (docker --pull, base stages only)"
+		base_pull_args="--pull"
 	fi
 fi
+
+extra_args=""
 
 export rocm_version="7.2.4"
 # Build latest official release version:
@@ -49,11 +61,13 @@ if [[ "$GPU_TARGETS" ]];then
 	extra_args="$extra_args --build-arg GPU_TARGETS=$GPU_TARGETS"
 fi
 
-DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
+# Stages that FROM a public image (ubuntu:24.04): may force a re-pull
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args $base_pull_args \
 	--target rocm-dev \
 	--build-arg ROCM_VERSION=$rocm_version \
 	-t rocm-dev:latest .
 
+# Stages that FROM/COPY --from the local stage tags: never pass a pull flag
 DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
 	--target stable-diffusion \
 	--build-arg stable_diffusion_tag=$stable_diffusion_tag \
@@ -64,7 +78,7 @@ DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
 	--build-arg llama_build=$llama_build \
 	-t llama-cpp:latest .
 
-DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args $base_pull_args \
 	--target rocm-base \
 	--build-arg ROCM_VERSION=$rocm_version \
 	-t rocm-base:latest .
