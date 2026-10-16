@@ -15,6 +15,15 @@ Local testing is done with **podman** (docker is tolerated but unsupported).
    the user.** Prepare the change, show the diff/summary, ask, and wait. Never force-push, never push
    a tag (tags trigger CI image builds/pushes to ghcr.io).
 3. Do not invent hardware/ROCm behavior — the whole project is empirical (see Gotchas).
+4. **Do not build or run the container image from an agent session** (no `./build.sh`, no `podman build`,
+   no `build_and_run.sh`, not even a single stage). The ROCm stages take ~15 min on a 16-core machine and
+   up to ~2 h on a quad core, they pull multi-GB base layers, and the build output floods the context.
+   The user builds images on their own desktop (with layer cache) or lets CI do it. Validate with cheap
+   static checks only, and test runtime behavior against an already-running container if the user gives
+   access. Build something only when the user explicitly asks for it in this session, and then redirect
+   output to a file and report only a short tail. Never let a "syntax check" command expand into running
+   a script: `bash -n $(git ls-files '*.sh')` checks only the first file, and dropping `-n` from a loop
+   over `git ls-files '*.sh'` executes `build.sh` (this actually happened — it started a full image build).
 
 ## Repository layout
 
@@ -148,19 +157,28 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
 
 ## How to validate changes locally
 
-No unit tests exist. Cheap checks first, then optionally build:
+No unit tests exist. **Static checks are the default; do not build the image (see hard rule 4)** — the
+user builds it on their own machine, or CI builds it from a tag:
 
 ```bash
-bash -n $(git ls-files '*.sh')                 # syntax check all shell
-yq '.' container-files/config.default.yaml     # YAML sanity (schema link at top of the file)
-python3 -c 'import yaml,sys;yaml.safe_load(open("container-files/config.default.yaml"))'
-podman build --target <stage> -t <stage>:latest .   # build one stage only, iterate
-GPU_TARGETS="gfx1030" ./build.sh               # fast-ish full build (still long)
-./build_and_run.sh                             # then: podman attach llama-lxc, journalctl -u llama-swap
+for f in $(git ls-files '*.sh'); do bash -n "$f" || echo "FAIL $f"; done   # syntax check all shell
+python3 -c 'import yaml;yaml.safe_load(open("container-files/config.default.yaml"))'   # YAML sanity
 ```
 
-Full builds are the expensive part (multi-target ROCm compiles). Prefer building a single stage, and
-never delete Dockerfile trimming steps to "make it build faster" — image size and the hipblaslt trim are
+Script-level logic can be exercised without any image: build a synthetic fixture under `/tmp` and run the
+script against it (`--dry-run` first, then `--yes` on the fixture only). For container behavior, prefer
+inspecting a live container the user grants access to (read-only, plus `--dry-run` for destructive tools).
+
+Build commands below are documented for the user's benefit — do not run them from an agent session:
+
+```bash
+GPU_TARGETS="gfx1030" ./build.sh               # user-run: fast-ish full build (still long)
+podman build --target <stage> -t <stage>:latest .   # user-run: one stage only
+./build_and_run.sh                             # user-run: then podman attach llama-lxc
+```
+
+Full builds are the expensive part (multi-target ROCm compiles).
+Never delete Dockerfile trimming steps to "make it build faster" — image size and the hipblaslt trim are
 deliberate. When changing anything user-visible (ports, paths, env, config keys, deploy steps, GPU support,
 cleanup behavior), update `README.md` **and** this `AGENTS.md` in the same change, then ask the user before
 committing/pushing.
