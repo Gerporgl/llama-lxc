@@ -79,10 +79,15 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
 - Inside the CT, useful commands (also in the MOTD `/etc/llama-lxc-motd`):
   `journalctl -u llama-swap -f`, `systemctl restart llama-swap`, `nano ~/data/config.yaml`,
   `hf cache list`, `hf cache prune`, `cleanup-hf-cache.sh`, `watch amd-smi`.
-- `cleanup-hf-cache.sh` builds a KEEP list by grepping `-hf <repo>:<quant>` lines in `~/data/config.yaml`
-  (**commented lines still count as kept**), deletes non-matching quant variants, always runs
-  `hf cache prune`, and always removes unlinked blobs (`clean_blob`) — that last part exists because
-  `hf cache rm` cannot delete a single quant variant.
+- `cleanup-hf-cache.sh` builds a KEEP list by scanning `~/data/config.yaml` (or `--keep-file` files) for
+  `-hf <repo>[:<quant>]` / `-hfr <repo> [-hff <file>]` tokens (**commented lines still count as kept**,
+  and the token must be on the same line as its repo). Two tiers: a repo with **no** reference is an
+  orphan and is wiped entirely (all revisions + mmproj), while a referenced repo only loses the quant
+  variants that match none of its kept quants (its `mmproj*` files are never touched). Quant tags are
+  matched as case-insensitive substrings of the cached file name (same rule llama.cpp uses); no quant /
+  `latest` == `Q4_K_M`, `all` == everything. Flags: `--dry-run`, `--yes`, `--keep-file`, `--cache-dir`,
+  `--allow-empty-keep-list`, `--verbose`. Ends with `hf cache prune` + a sweep of broken snapshot links,
+  unlinked blobs, empty repo/lock dirs; never touches `*.incomplete`.
 
 ## Proxmox deployment (the intended target)
 
@@ -120,6 +125,9 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
   `create` by editing `/etc/shadow` in the stopped container (never baked into the image).
 - stable-diffusion's `--offload-to-cpu` is recommended for ≥1024px images; `--chroma-disable-dit-mask`
   crashes ("buffer not set") despite the docs.
+- `hf cache rm` **can** delete single files (the old assumption in the cleanup script was wrong): `hf cache rm model/<repo>` removes a whole repo (the `model/` prefix is **mandatory**, `hf cache rm <repo>` finds nothing) and `hf cache rm hf://models/<repo>/<file>` removes one quant variant from all revisions (`@<rev>` in the URI is rejected). Both support `--dry-run`, `-y`, `--json`, `--cache-dir`; unknown targets only warn and exit 0. `hf cache list --revisions --format json` gives exact `repo_id`/`snapshot_path` (use it instead of reversing `models--org--name`, which is ambiguous for repo names containing `--`). hfh 2.2.0 does not sanitize repo ids beyond `/` → `--`.
+- llama.cpp's `-hf` also downloads `mmproj*` files, so quant-level cleanup used to leave ~0.9–1.2 GB of orphan vision files per abandoned model (the reason the script now has the orphan-repo tier). `-hft <token>` (HF auth token, used in the default config) must not be parsed as `-hf`.
+- Never remove `blobs/*.incomplete` by hand — that is an in-progress download; `hf cache prune` owns them.
 - Upstream drift is real: llama.cpp is pinned to the **latest pre-release** tag (stable releases are too old);
   `build.sh` guards against empty version resolution. Upstream `stable-diffusion.cpp` frontend swap (see above).
 - `container-files/llama-server-wrapper.sh`, `llama-server-vulkan-wrapper.sh`, `sd-server-wrapper.sh`,

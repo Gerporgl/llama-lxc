@@ -148,20 +148,29 @@ After saving the config, llama-swap should automatically reload it, there should
 
 ## Huggingface and model cleanup
 
-The container image now include the Huggingface cli tool (hf command), so you can list the cache and prune manually, and do other things.
+The container image includes the Huggingface CLI (`hf` command), so you can list and prune the cache by hand (`hf cache list`, `hf cache prune`).
 
-A helper script was also added, called cleanup-hf-cache.sh. Once you are inside the container (through ssh or a console for example), you can simply run it like this:
+A helper script, `cleanup-hf-cache.sh`, reclaims the space llama.cpp leaves behind. It scans `~/data/config.yaml` (or the files you give it with `--keep-file`) for every `-hf <repo>[:<quant>]` and `-hfr <repo> [-hff <file>]` reference, then cleans in two tiers:
+
+- **Orphan models** — a cached repo with **no reference at all** in the config is wiped completely: every revision, every quant, and the `mmproj*` (vision) files too. This is the usual drift: you tried a model, removed it from the config, and only its mmproj stayed behind — which is easy to miss because `hf cache list` still reports the repo.
+- **Quant variants** — a repo that **is** referenced keeps its `mmproj*` files, but any other cached `.gguf` of that repo matching none of its referenced quants is deleted. Useful when the same model is used twice with two different quants: the quants you dropped from the config are freed.
+
+Quant matching mirrors llama.cpp: the quant tag is compared as a case-insensitive substring of the cached file name. `-hf repo` without a quant (and `:latest`) means `Q4_K_M`, `:all` keeps every file of the repo.
+
+It then always runs `hf cache prune` and sweeps leftovers: broken snapshot symlinks, blobs that no snapshot links anymore, empty cache dirs, empty lock dirs. Files named `*.incomplete` (a download in progress) are never touched, and `sd/` or any other non-Huggingface folder in `~/data/models` is ignored.
+
+Models listed in config.yaml but **commented out** still count as referenced and are not deleted. To really free a model, remove the line from the config (or back the config up somewhere else first).
+
 ```
-cleanup-hf-cache.sh
+cleanup-hf-cache.sh --dry-run    # show the plan only, delete nothing (start here)
+cleanup-hf-cache.sh              # show the plan, then ask before deleting
+cleanup-hf-cache.sh --yes        # no prompt, for scripted use
+cleanup-hf-cache.sh --keep-file other.yaml --verbose
 ```
-IMPORTANT! The script will look for models in the huggingface cache that are not listed in your config.yaml
 
-It will then ask if you want to proceed and delete those unreferenced model variants.
-Models that are listed in your config.yaml but commented still counts as a referenced model quant and won't be deleted. If you want to remove them, remove them entirely from your config and backup the config somewhere else if needed.
+If the scanned files contain no model reference at all, the script refuses to delete anything unless you pass `--allow-empty-keep-list`, so a wrong `--keep-file` path can never wipe the whole cache. Non-interactive runs (no TTY) need `--yes`.
 
-The script also always try to remove unlinked blob files (without any confirmation...), hopefully this should be safe for most use cases. This was needed since there is no easy way to remove only one quant variant currently with hf cache rm (it can only delete the entire model and all quants).
-
-You can also run hf cache prune to remove old blob layers, although the cleanup-hf-cache.sh was updated to now always call hf cache prune even if models match the keep list, so you can simply run cleanup-hf-cache.sh to delete and reclaim most unused model space.
+The same removals can be done by hand with the CLI: `hf cache rm model/<repo>` (whole repo, the `model/` prefix is required) and `hf cache rm hf://models/<repo>/<file>` (one quant variant); both accept `--dry-run`.
 
 ## See Also
 
