@@ -6,6 +6,10 @@ It runs with systemd init so that you can SSH to the container, retain logs usin
 
 This solution greatly improves the sysadmin user experience, and is probably the closest you can get to a bare-metal setup while using Proxmox for other VMs hosting usage, and you don't have to deal with hardware virtualization with iommu and sr-iov, etc. and it should still be secure enough since the container is running in unprivileged mode without nesting, with all uid/gid mapped differently as is the case with lxc (except for the gpu device, which is needed)
 
+Note for contributors (and AI agents working on this repo): see [AGENTS.md](AGENTS.md) for the build
+pipeline internals, cross-file invariants and gotchas. Keep **both** `AGENTS.md` and this `README.md`
+up to date with every change, and always confirm with the maintainer before committing or pushing.
+
 ## Quick Start
 
 ### Prerequisites
