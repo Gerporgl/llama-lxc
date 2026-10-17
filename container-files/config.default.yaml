@@ -76,6 +76,9 @@ macros:
   "sd-vulkan": >
     sd-server-vulkan
     --listen-port ${PORT}
+  # Kokoro-FastAPI text-to-speech server (cpu only, no gpu involved)
+  "kokoro": >
+    kokoro-server --port ${PORT}
   "default_ctx": 32768
   "models_dir": "${env.HOME}/data/models"
   "sd_models_dir": "${models_dir}/sd"
@@ -177,6 +180,27 @@ models:
       --sampling-method euler
       --cfg-scale 4.0
 #      --chroma-disable-dit-mask # Although it is documented to use this, it crashes with "buffer not set" error when generating an image
+
+# Kokoro TTS: OpenAI compatible /v1/audio/speech, see the Kokoro-FastAPI project.
+# It runs on CPU only (its own bundled torch), so it never competes for the vram
+# the models above use, but it does hold roughly 0.5GB of system RAM while loaded.
+# Its first start downloads the 327MB voice model into ~/data/kokoro-model (data
+# volume), that is why healthCheckTimeout has to stay generous.
+# useModelName is required: llama-swap rewrites the "model" field of the request
+# to that value, and kokoro only accepts tts-1, tts-1-hd, kokoro, gpt-4o-mini-tts.
+# Add this model to persistent-group below if you want it always ready.
+  "kokoro-tts":
+    name: "Kokoro TTS"
+    useModelName: "tts-1"
+    proxy: "${model-url}"
+    checkEndpoint: "/health"
+    cmd: >
+      ${kokoro}
+    # KOKORO_DATA_DIR is where the weights are kept, API_LOG_LEVEL quiets the
+    # upstream logs. Any Kokoro-FastAPI setting can be set here.
+    env:
+      - "KOKORO_DATA_DIR=${env.HOME}/data/kokoro-model"
+      - "API_LOG_LEVEL=INFO"
 
 # This persistent model can be used in continue.dev, for autocomplete
 # so we don't want to unload it if it is used

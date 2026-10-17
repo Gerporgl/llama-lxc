@@ -23,6 +23,11 @@ up to date with every change, and always confirm with the maintainer before comm
 
 ### Important notes / updates
 
+ * Text-to-speech is now included (Kokoro-FastAPI):
+   * A CPU-only text-to-speech server, managed by llama-swap as the `kokoro-tts` model, on the OpenAI compatible `v1/audio/speech` endpoint
+   * Nothing to download or configure by hand, the voice model is fetched on first use into `~/data/kokoro-model` (data volume)
+   * It never touches the GPU, so it does not affect your vram budget. See [Text-to-speech (Kokoro TTS)](#text-to-speech-kokoro-tts)
+
  * Vulkan + ROCm binaries now included:
    * The container image now include both llama.cpp and stable-diffusion vulkan binaries as well as ROCm 7.2.4
    * You can change your config.yaml to point to these binaries, their location can be seen in the config.default.yaml, and a macro is already defined if you want to use them.
@@ -108,13 +113,19 @@ This will build both stable-diffusion.cpp and llama.cpp for these GPU tagets onl
 
 This only apply to ROCm binaries, the vulkan binaries do not target any specific architecture and are generic.
 
+The Kokoro text-to-speech server is CPU only and has no GPU target. The only build option that matters is
+whether you want Japanese voices, which need a ~550MB dictionary that is not installed by default:
+```
+KOKORO_JAPANESE=true ./build.sh
+```
+
 ## What It Does / technical details
 
 Llama-Swap runs as a systemd container with GPU passthrough, allowing you to:
 
 - **Swap models automatically**: The concurrency of multiple models is based on the config.yaml and the groups configured. You can decide based on your need and the vram you have...
 - **GPU passthrough**: Access AMD GPU devices via `/dev/kfd` and `/dev/dri`
-- **Multi-model support**: Llama, Gemma, Stable Diffusion, and more
+- **Multi-model support**: Llama, Gemma, Stable Diffusion, Kokoro text-to-speech, and more
   - This is mostly thanks to the fact we uses llama-swap: this container uses llama-swap official container image as a base, but currently also compile and adds sd-server (stable-diffusion.cpp build for ROCm) to it.
   - The provided config.yaml example is an actual working setup on a 16GB vram AMDGPU, huggingface models should be downloaded automatically, but for stable diffusion, you'll have to download the model files manually (you can find the info on stable-diffusion.cpp project under the z-image-turbo section, or try your own models)
 
@@ -145,6 +156,66 @@ Check the default bundled config for a good start: [config.default.yaml](contain
 Full config example from llama-swap project: [config.example.yaml](https://github.com/mostlygeek/llama-swap/blob/main/config.example.yaml)
 
 After saving the config, llama-swap should automatically reload it, there should be no need to restart the service via systemctl.
+
+## Text-to-speech (Kokoro TTS)
+
+The image bundles [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), a FastAPI server for the
+[Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) voice model, which exposes the OpenAI compatible
+`v1/audio/speech` endpoint (plus a small web player). It is installed under `/opt` like the other apps,
+and llama-swap starts it on demand as if it were just another model:
+
+- `/opt/kokoro`: upstream checkout, plus its own self contained python virtualenv (installed with `uv` from
+  their lock file, **CPU torch only**: no ROCm, no CUDA, no GPU of any sort is used for TTS)
+- `kokoro-server`: the launcher, on the PATH (`/opt/kokoro/bin/kokoro-server`), accepts `--port` and `--host`
+  and can be run by hand exactly the same way llama-swap runs it
+- `~/data/kokoro-model/`: weights and caches, on the data volume. Created automatically, and the 327MB
+  `v1_0/kokoro-v1_0.pth` is downloaded on first start using upstream's own download script (checksum
+  verified, no-op on every start after that). No weight is baked into the image
+
+The default config defines the `kokoro` macro and a `kokoro-tts` model, so speech works out of the box on
+port 8080. The first request is slow (the server has to boot and load the model, and on the very first run
+it also downloads it), after that it is close to instant:
+
+```bash
+curl -H 'Content-Type: application/json' \
+  -d '{"input":"Hello there!","model":"kokoro-tts","voice":"af_heart","response_format":"mp3"}' \
+  http://<container-ip>:8080/v1/audio/speech -o hello.mp3
+```
+
+A few things worth knowing:
+
+- `useModelName: "tts-1"` in that model entry is not decoration: llama-swap rewrites the `model` field of the
+  request it forwards, and Kokoro only accepts `tts-1`, `tts-1-hd`, `kokoro` and `gpt-4o-mini-tts`
+- while it runs, the server listens on the port llama-swap assigned (from `startPort`, so 5800 by default)
+  and on all interfaces, which means its own web player is reachable at `http://<container-ip>:5800/web/`
+  (note the trailing slash, `/web` only redirects) and its Swagger UI at `/docs`. Pass `--host 127.0.0.1` in
+  the macro if you do not want that. Only IPv4 is bound, `localhost` may resolve to IPv6 and fail, use
+  `127.0.0.1`
+- the voices are Kokoro's own names, not OpenAI's (`alloy` alone will fail). `curl
+  "http://<container-ip>:8080/v1/audio/voices?model=kokoro-tts"` lists what is installed through
+  llama-swap. The first letter is the language (`a`/`m` American, `b` British, `e` Spanish, `f` French, `h`
+  Hindi, `i` Italian, `j` Japanese, `p` Portuguese, `z` Mandarin), and a hyphen means "combine these two
+  voices", so old v0.19 names such as `bf-selena` simply do not exist any more. To use custom voicepacks,
+  point `VOICES_DIR` (a per model `env:` entry) to a folder on the data volume
+- every language the bundled voices cover works out of the box except Japanese (see below): tested en, es,
+  fr, it, pt, hi and zh on the CPU backend
+- like any other model it is unloaded after `globalTTL` of inactivity. It stays on CPU so it never competes
+  for vram, but it holds roughly 0.5GB of system RAM while loaded. Add it to `persistent-group` in
+  config.yaml if you would rather keep it warm all the time
+- everything is configured with environment variables (upstream keeps the full list in
+  [docs/configuration.md](https://github.com/remsky/Kokoro-FastAPI/blob/master/docs/configuration.md)),
+  set them in the model's `env:` list. `KOKORO_DATA_DIR` moves the weights, temp and cache folders at once,
+  `MODEL_DIR` / `VOICES_DIR` / `WEB_PLAYER_PATH` / `TEMP_FILE_DIR` override each of them individually,
+  `API_LOG_LEVEL` is set to INFO in the default config (upstream defaults to a much chattier DEBUG), and
+  `DOWNLOAD_MODEL=false` makes the launcher refuse to start unless the weights are already in place (air
+  gapped or pre-seeded setups). `USE_GPU` is deliberately pinned to false and not overridable: this is the
+  CPU backend, there is no ROCm or CUDA torch in the image
+- Japanese voices are **not** installed by default, they need the full UniDic dictionary (~550MB). Build
+  with `KOKORO_JAPANESE=true ./build.sh` if you need them. Every other language works
+
+The size cost is roughly 1.1GB on top of the previous image (the CPU torch wheel is the bulk of it), plus
+about 350MB of weights on the data volume (the 327MB model, its config, and 21MB of optional voice tuning
+weights that upstream's download script also fetches).
 
 ## Huggingface and model cleanup
 

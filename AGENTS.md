@@ -32,7 +32,7 @@ Local testing is done with **podman** (docker is tolerated but unsupported).
 | `Dockerfile` | 5-stage build (see below). Single source of truth for the image. |
 | `build.sh` | Resolves latest upstream versions from GitHub APIs, then builds each stage separately. |
 | `run.sh` / `run_local.sh` / `build_and_run.sh` | Local podman/docker test harness (root password prompt, `./data` bind mount, ports 2222→22, 8888→8080). |
-| `container-files/` | Files injected into the image: systemd units, `prepare.sh`, launcher, `config.default.yaml`, `cleanup-hf-cache.sh`, MOTD. |
+| `container-files/` | Files injected into the image: systemd units, `prepare.sh`, launchers (`llama-swap-launcher.sh`, `kokoro-launcher.sh` → installed as `/opt/kokoro/bin/kokoro-server`), `config.default.yaml`, `cleanup-hf-cache.sh`, MOTD. |
 | `proxmox-host-scripts/setup-llama-lxc.sh` | Runs **on the Proxmox host**: creates/patches the CT config for GPU passthrough + idmaps, optional ZFS tuning. |
 | `.github/workflows/docker-image.yml` | CI: builds on tag `v*`, weekly schedule (Fri 22:37 UTC), manual dispatch; pushes `:latest` + versioned tag to ghcr.io. |
 
@@ -50,16 +50,25 @@ Stages, in build order (`build.sh` builds them one at a time with `--target`):
    `llama.cpp`'s build number is derived from the git tag: `b11539` → `11539` (`DLLAMA_BUILD_NUMBER`).
 4. `rocm-base` — Ubuntu 24.04 + ROCm **runtime only** (`rocm-hip-runtime`, `amd-smi-lib`, `rocminfo`, `hipblas`),
    then heavy trimming of `/opt/rocm` incl. **hipblaslt Tensile libs for gfx families not in `GPU_TARGETS`**.
-5. `llama-lxc` — final image: `FROM rocm-base`, installs `init` (systemd as `ENTRYPOINT ["/sbin/init"]`,
+5. `kokoro` — `remsky/Kokoro-FastAPI` at the latest **release** tag (they publish real releases, unlike
+   llama.cpp) into `/opt/kokoro`, following their own `docker/cpu/Dockerfile.optimized`: shallow clone, then
+   `uv venv --python 3.12 && uv sync --frozen --extra cpu --no-install-project` (the `cpu` extra is CPU torch,
+   never ROCm/CUDA torch; `--frozen` honors their `uv.lock`; `--no-install-project` + `PYTHONPATH` is how
+   upstream runs it). Build tools stay in this throwaway stage. Optional `python -m unidic download` when
+   `KOKORO_JAPANESE=true` (Japanese voices, ~550MB). **No model weights are ever baked in.** Independent of
+   the ROCm stages (`FROM ubuntu:24.04`), so it may receive `--pull`, and must be built before `llama-lxc`.
+6. `llama-lxc` — final image: `FROM rocm-base`, installs `init` (systemd as `ENTRYPOINT ["/sbin/init"]`,
    `STOPSIGNAL SIGRTMIN+3`), sshd, `systemd-networkd`, python + `huggingface_hub` (`hf` CLI),
-   downloads the **llama-swap release tarball** (not built), copies compiled binaries, enables units.
+   downloads the **llama-swap release tarball** (not built), copies compiled binaries, `COPY --from=kokoro:latest /opt/kokoro`
+   plus its runtime libs (`espeak-ng`, `libsndfile1`, `libgomp1`), enables units.
 
 `build.sh` writes `rocm_version.txt`, `llama_version.txt`, `sd_version.txt`, `llama_swap_version.txt`,
-and `image_version.txt` (all gitignored). `image_version.txt` is read by CI and also baked into the OCI
-`org.opencontainers.image.version` label — **single source of truth, do not fork it**.
+`kokoro_version.txt` and `image_version.txt` (all gitignored). `image_version.txt` is read by CI and also
+baked into the OCI `org.opencontainers.image.version` label — **single source of truth, do not fork it**.
 
 Key build args: `ROCM_VERSION` (currently 7.2.4), `GPU_TARGETS`, `llama_build`, `stable_diffusion_tag`,
-`llama_swap_build`, `IMAGE_VERSION`. Override targets to make builds sane: `GPU_TARGETS="gfx1030" ./build.sh`.
+`llama_swap_build`, `kokoro_build`, `KOKORO_JAPANESE` (default false), `IMAGE_VERSION`. Override targets to
+make builds sane: `GPU_TARGETS="gfx1030" ./build.sh`.
 Default is a 9-target list → **15+ min on 16 cores, hours on a quad core**. Vulkan builds are arch-agnostic.
 Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive `--pull`/`--pull=newer`
 (`build.sh pull`); passing a pull flag to stages that `FROM`/`COPY --from` local tags **breaks the build**
@@ -81,10 +90,21 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
   Per-GPU overrides such as `HSA_OVERRIDE_GFX_VERSION` go in the **launcher on the volume** or commented
   in the unit (example: `10.3.0` for gfx1030 / RX 6750 XT).
 - Binary names used by config macros: `llama-server`, `sd-server` (ROCm, from PATH) and
-  `llama-server-vulkan`, `sd-server-vulkan` (symlinks in `/usr/local/bin` → `/opt/*/vulkan/bin`).
-- `config.default.yaml` uses llama-swap **macros** (`llama`, `llama-vulkan`, `sd`, `sd-vulkan`,
+  `llama-server-vulkan`, `sd-server-vulkan` (symlinks in `/usr/local/bin` → `/opt/*/vulkan/bin`), plus
+  `kokoro-server` (symlink in `/usr/local/bin` → `/opt/kokoro/bin/kokoro-server`, also on PATH via
+  `/etc/environment`).
+- `kokoro-server` (`container-files/kokoro-launcher.sh`, our adaptation of upstream's
+  `docker/scripts/entrypoint.sh`) is the only way to start Kokoro: it derives `KOKORO_HOME` from its own
+  location, exports the app settings (`MODEL_DIR`, `VOICES_DIR`, `WEB_PLAYER_PATH`, `TEMP_FILE_DIR`,
+  `TIKTOKEN_CACHE_DIR`, `USE_GPU=false`, `DEVICE_TYPE=cpu`, espeak paths — upstream defaults are `/app/...`
+  and must all be overridden), runs upstream `docker/scripts/download_model.py --output $KOKORO_DATA_DIR/v1_0`,
+  then `exec python -m uvicorn api.src.main:app` from `$KOKORO_HOME`. `--port`/`--host` flags, and
+  `KOKORO_DATA_DIR` (default `/root/data/kokoro-model`) + `KOKORO_HOME` + `DOWNLOAD_MODEL` env overrides.
+  Weights therefore live on the data volume, never in the image.
+- `config.default.yaml` uses llama-swap **macros** (`llama`, `llama-vulkan`, `sd`, `sd-vulkan`, `kokoro`,
   `models_dir`, `default_ctx`, `default_llama_args`) plus `models:` and `groups:`; llama-swap hot-reloads
-  config, no systemctl restart needed.
+  config, no systemctl restart needed. The `kokoro-tts` model **needs** `useModelName: "tts-1"` (see
+  Gotchas). Validate any config edit with `llama-swap -validate -config <file>` (no server started).
 - Inside the CT, useful commands (also in the MOTD `/etc/llama-lxc-motd`):
   `journalctl -u llama-swap -f`, `systemctl restart llama-swap`, `nano ~/data/config.yaml`,
   `hf cache list`, `hf cache prune`, `cleanup-hf-cache.sh`, `watch amd-smi`.
@@ -147,6 +167,68 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
 - Local helper scripts (`push.sh`), `data/`, `home-root/`, `*_version.txt`, `pi-session*` are gitignored —
   don't commit them.
 
+### Kokoro-FastAPI (text-to-speech)
+
+- It is **CPU only by design**: the `cpu` extra installs the CPU torch wheel. Never add ROCm/CUDA torch, and
+  never route TTS through a GPU — the point of the layer is to stay off the GPU paths that already crash when
+  mixed (see above).
+- The venv is **not relocatable**: `/opt/kokoro/.venv/bin/python3.12` is an absolute symlink to the builder's
+  `/usr/bin/python3.12`, and upstream's docs call running that venv's python from a different path out of
+  spec (they warn about `PYTHONHOME`). So `COPY --from=kokoro /opt/kokoro /opt/kokoro` must keep the **exact**
+  path, and the launcher derives `KOKORO_HOME` from its own location. Ubuntu 24.04's system python is 3.12,
+  which matches their `requires-python`; if the base moves to a newer Ubuntu the venv must be rebuilt there
+  (never copy a venv across images).
+- Upstream install contract (do not "simplify" it): `uv venv --python 3.12` + `uv sync --frozen --extra cpu
+  --no-install-project`, then run with `PYTHONPATH=$KOKORO_HOME` + `python -m uvicorn api.src.main:app` — the
+  project itself is deliberately **not** installed into the venv. Their `pyproject.toml` pins
+  `torch==2.8.0` / `onnxruntime==1.23.2`, so an unbuildable wheel pin upstream eventually breaks this stage.
+- Upstream defaults are all `/app/...` (`model_dir`, `voices_dir`, `web_player_path`, `temp_file_dir`,
+  `use_gpu`, `device_type` — pydantic-settings fields in `api/src/core/config.py`, matched case-insensitively
+  from the environment, `extra="ignore"`); the launcher must override every path. `MODEL_DIR` must contain
+  `v1_0/kokoro-v1_0.pth` (`api/src/core/model_config.py` hardcodes `v1_0/kokoro-v1_0.pth`), and upstream's
+  `download_model.py --output <dir>` writes exactly `<dir>/v1_0/kokoro-v1_0.pth` + `config.json` (sha256
+  verified, idempotent, downloaded from the `v0.1.4` release assets regardless of the app version).
+- Keep the launcher's `${VAR:-default}` form for `MODEL_DIR`, `VOICES_DIR`, `WEB_PLAYER_PATH`,
+  `TEMP_FILE_DIR`, `TIKTOKEN_CACHE_DIR`: llama-swap per-model `env:` entries must keep working. `USE_GPU`
+  stays a hard `false`.
+- Upstream images bake the weights into `/app/models`; ours does **not** (user requirement). Weights come
+  from `~/data/kokoro-model` on the data volume, downloaded on first start — that is why `healthCheckTimeout:
+  600` in the llama-swap config must stay generous, and why `DOWNLOAD_MODEL=false` exists for pre-seeded or
+  air-gapped setups. `cleanup-hf-cache.sh` deliberately never touches `~/data/kokoro-model` (not an HF cache).
+  Note `download_model.py`'s `main()` also pulls **21MB of Inno voice-tuner weights** into `inno_tuner/` for
+  the `/dev/tune` endpoint (disabled by default via `enable_inno_tuner`), and its `check_tuner_update()` adds
+  up to 3s to every start unless `HF_HUB_OFFLINE=1`. Not worth patching upstream for; set `DOWNLOAD_MODEL=false`
+  on a pre-seeded volume to skip all of it.
+- Through llama-swap, `useModelName: "tts-1"` is mandatory: Kokoro rejects unknown model names with HTTP 400
+  (accepted: `tts-1`, `tts-1-hd`, `kokoro`, `gpt-4o-mini-tts`) and llama-swap rewrites the incoming `model`
+  field. Verified end to end with the real `config.default.yaml`: cold start ≈15s, unload via
+  `/api/models/unload` terminates the uvicorn process cleanly.
+- espeak is **not** optional and its path differs by distro: `api/src/services/text_processing/phonemizer.py`
+  uses `phonemizer` (phonemizer-fork) `EspeakBackend` for the languages misaki does not cover, which needs the
+  system `libespeak-ng` (found with `find_library`) → apt `espeak-ng` (pulls `libespeak-ng1` +
+  `espeak-ng-data`) is a runtime dep of the final stage. On **Ubuntu 24.04 the data lives in
+  `/usr/lib/x86_64-linux-gnu/espeak-ng-data`**, not `/usr/share/espeak-ng-data` as on Debian — verified by
+  installing the package in a throwaway ubuntu:24.04 container, so the launcher globs the multiarch path
+  first. The var phonemizer-fork actually reads is `PHONEMIZER_ESPEAK_DATA_PATH` (upstream's Dockerfile sets
+  `PHONEMIZER_ESPEAK_DATA`, which nothing reads). `misaki` is path-agnostic: `espeakng-loader` ships its own
+  14MB copy of libespeak-ng 1.52 + data inside the venv, and misaki calls `set_data_path()` with it.
+- Voice names: v1_0 set only (72 `.pt` files under `api/src/voices/v1_0`, 64 reported by `/v1/audio/voices`;
+  the prefix letter is the language). Legacy v0.19 names with a hyphen (`bf-selena`) are **not** available and
+  a hyphen is parsed as a voice-combination separator (`bf-selena` → voice `bf`). Tested working through the
+  launcher: en, es, fr, it, pt, hi, zh (each with its own misaki/phonemizer pipeline).
+- Kokoro's uvicorn binds **IPv4 only** (`0.0.0.0`): inside the CT use `127.0.0.1`, not `localhost` (which may
+  resolve to `::1`). Its OpenAI-compatible surface is under `/v1`, the web player under `/web/` (`/web` only
+  307-redirects), Swagger at `/docs` — all reachable at the llama-swap-assigned port (5800+) since it binds
+  all interfaces.
+- Japanese voices need `python -m unidic download` (~550MB dictionary, an extra network fetch at build time),
+  gated by `KOKORO_JAPANESE`; everything else works without it (see the verified list above).
+- `speed` is a top-level request field of Kokoro's own schema (verified: 0.6 / 1.0 / 1.8 produce clearly
+  different lengths), not an OpenAI `overrides` thing. `response_format` verified for mp3 and wav.
+- Cost: ≈1.1GB added to the image (CPU torch is the bulk; the venv is ≈1.6GB uncompressed), plus ≈350MB of
+  weights on the data volume. CI disk space and pull times both grow.
+- kokoro ships no HIP/ROCm code at all, so it is unaffected by `GPU_TARGETS`; the stage is `FROM ubuntu:24.04`
+  and may receive `--pull` like `rocm-dev`/`rocm-base` (see the pull-flag rule).
+
 ## Branches / release conventions
 
 - Branch `master` is the working branch. Experiment branches exist upstream:
@@ -161,8 +243,9 @@ No unit tests exist. **Static checks are the default; do not build the image (se
 user builds it on their own machine, or CI builds it from a tag:
 
 ```bash
-for f in $(git ls-files '*.sh'); do bash -n "$f" || echo "FAIL $f"; done   # syntax check all shell
+for f in $(git ls-files '*.sh') container-files/kokoro-launcher.sh container-files/llama-lxc-motd; do bash -n "$f" || echo "FAIL $f"; done   # syntax check all shell
 python3 -c 'import yaml;yaml.safe_load(open("container-files/config.default.yaml"))'   # YAML sanity
+./llama-swap -validate -config container-files/config.default.yaml   # llama-swap's own config validator
 ```
 
 Script-level logic can be exercised without any image: build a synthetic fixture under `/tmp` and run the
@@ -176,6 +259,15 @@ GPU_TARGETS="gfx1030" ./build.sh               # user-run: fast-ish full build (
 podman build --target <stage> -t <stage>:latest .   # user-run: one stage only
 ./build_and_run.sh                             # user-run: then podman attach llama-lxc
 ```
+
+Kokoro recipe that needs **no image build of ours** (this is how the launcher and the config entry were
+verified): run upstream's `ghcr.io/remsky/kokoro-fastapi-cpu:latest` with
+`-v $PWD/container-files/kokoro-launcher.sh:/app/bin/kokoro-server:ro` (their image already has `/app/bin`
+on PATH), bind-mount a llama-swap release binary and our `config.default.yaml`, then POST
+`/v1/audio/speech` with `{"model":"kokoro-tts",...}` and watch `/running`. Their layout
+(`/app/bin`, `/app/docker/scripts/download_model.py`, `/app/models/v1_0`, `/app/api/src`) matches what the
+launcher expects, so path logic is exercised as-is. Building only the `kokoro` stage (`--target kokoro`)
+is far cheaper than the ROCm stages, but it is still an image build: ask the user first.
 
 Full builds are the expensive part (multi-target ROCm compiles).
 Never delete Dockerfile trimming steps to "make it build faster" — image size and the hipblaslt trim are

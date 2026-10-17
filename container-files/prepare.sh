@@ -9,6 +9,7 @@ else
 fi
 
 mkdir -p /root/data
+mkdir -p /root/data/kokoro-model
 
 if [[ ! -f  "/root/data/config.yaml" ]]; then
     echo "Config file not found, copying default from app folder to root"

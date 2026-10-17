@@ -135,6 +135,40 @@ RUN echo llama_build=$llama_build && \
     rm /app -rf
 
 
+# Kokoro-FastAPI (text to speech). CPU backend only: no ROCm and no CUDA torch.
+# This stage mirrors upstream docker/cpu/Dockerfile.optimized (uv-locked venv, sdists
+# compiled here) so upstream stays unpatched; only /opt/kokoro lands in the final image,
+# all build tools stay in this throwaway stage. No model weights are baked in, the
+# launcher downloads them to the data volume on first start.
+FROM ubuntu:24.04 as kokoro
+
+ARG kokoro_build
+# Japanese voices need the full UniDic dictionary (~550MB), fetched separately by
+# unidic. Off by default, every other language works. Set true to enable ja.
+ARG KOKORO_JAPANESE=false
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    python3 \
+    python3-dev \
+    build-essential \
+    cmake \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && mv /root/.local/bin/uv /root/.local/bin/uvx /usr/local/bin/ \
+    && git clone --branch ${kokoro_build} --depth 1 https://github.com/remsky/Kokoro-FastAPI.git /opt/kokoro \
+    # keep only what the server needs at runtime (uv.lock is what drives the venv)
+    && cd /opt/kokoro \
+    && rm -rf .git .github .claude examples assets charts docs api/tests web/tests *.png \
+    && export UV_HTTP_TIMEOUT=120 UV_HTTP_RETRIES=3 UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy \
+    && uv venv --python 3.12 \
+    && uv sync --frozen --extra cpu --no-install-project \
+    && if [ "$KOKORO_JAPANESE" = "true" ]; then .venv/bin/python -m unidic download; fi \
+    && rm -rf /root/.cache/uv \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+
 FROM ubuntu:24.04 as rocm-base
 
 USER root
@@ -214,7 +248,11 @@ RUN apt-get update && \
     #networkd-dispatcher \
     iproute2 \
     # Python... (mostly for huggingface cli, to manage and cleanup model cache)
-    python3  python3-pip && \
+    python3  python3-pip \
+    # Runtime libs for Kokoro-FastAPI. espeak-ng (plus its libespeak-ng1/data) backs
+    # the languages misaki does not cover; the venv bundles its own libgomp (torch),
+    # libsndfile (soundfile) and espeak-ng data (espeakng-loader).
+    espeak-ng libsndfile1 && \
     pip3 install -U "huggingface_hub" --break-system-packages && \
     apt-get -y remove dbus && \
     apt-get -y autoremove && \
@@ -258,6 +296,10 @@ COPY --from=llama-cpp:latest /opt/llama /opt/llama
 # Copy the stable-diffusion binaries that we compiled in a previous stage
 COPY --from=stable-diffusion:latest /opt/stable-diffusion /opt/stable-diffusion
 
+# Copy the Kokoro-FastAPI app and its self contained virtualenv (uv-locked, cpu torch).
+# Keep the /opt/kokoro path: the venv's interpreter link and console scripts are absolute.
+COPY --from=kokoro:latest /opt/kokoro /opt/kokoro
+
 RUN \
     # Create our own expected gid for video and render
     # so that our host script can expect pre defined numbers
@@ -267,7 +309,7 @@ RUN \
     groupadd -g 777 render_host && \
     # but also add the root user to every possible group (probably needed for podman local run)
     usermod -aG video_host,render_host,video,render root && \
-    echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rocm/bin:/opt/llama/bin:/opt/stable-diffusion/bin\"" > /etc/environment && \
+    echo "PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rocm/bin:/opt/llama/bin:/opt/stable-diffusion/bin:/opt/kokoro/bin\"" > /etc/environment && \
     echo "LLAMA_CACHE=/root/data/models" >> /etc/environment && \
     echo "ROCR_VISIBLE_DEVICES=0" >> /etc/environment && \
     echo "HF_HUB_CACHE=/root/data/models/" >> /etc/environment && \
@@ -278,6 +320,9 @@ RUN \
 RUN ln -s /opt/llama/vulkan/bin/llama-server /usr/local/bin/llama-server-vulkan && \
     ln -s /opt/stable-diffusion/vulkan/bin/sd-server /usr/local/bin/sd-server-vulkan
 ADD container-files/llama-swap-launcher.sh /opt/llama/llama-swap/default-llama-swap-launcher
+# Kokoro launcher must be added after the /opt/kokoro copy so it is not overwritten
+ADD --chmod=755 container-files/kokoro-launcher.sh /opt/kokoro/bin/kokoro-server
+RUN ln -s /opt/kokoro/bin/kokoro-server /usr/local/bin/kokoro-server
 
 ADD container-files/prepare-llama.service /etc/systemd/system/
 ADD --chmod=755 container-files/prepare.sh /usr/local/bin

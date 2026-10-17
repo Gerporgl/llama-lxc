@@ -31,22 +31,25 @@ export rocm_version="7.2.4"
 # Build from latest pre-release from github:
 export llama_build=$(curl -s "https://api.github.com/repos/ggml-org/llama.cpp/releases" | jq -r '[.[] | select(.prerelease == true)][0].tag_name')
 export stable_diffusion_tag=$(curl -s https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest | jq -r '.tag_name') && \
-export llama_swap_version=$(curl -s https://api.github.com/repos/mostlygeek/llama-swap/releases/latest | jq -r '.tag_name')
+export llama_swap_version=$(curl -s https://api.github.com/repos/mostlygeek/llama-swap/releases/latest | jq -r '.tag_name') && \
+export kokoro_version=$(curl -s https://api.github.com/repos/remsky/Kokoro-FastAPI/releases/latest | jq -r '.tag_name')
 
 echo $rocm_version > rocm_version.txt
 echo $llama_build > llama_version.txt
 echo $stable_diffusion_tag > sd_version.txt
 echo $llama_swap_version > llama_swap_version.txt
+echo $kokoro_version > kokoro_version.txt
 
 llama_swap_build="${llama_swap_version//[[:alpha:]]}"
 echo llama_build=$llama_build
 echo stable_diffusion_tag=$stable_diffusion_tag
 echo llama_swap_build=$llama_swap_build
+echo kokoro_version=$kokoro_version
 
 # Full component version string: used as the OCI version label inside the image
 # (ARG IMAGE_VERSION, last stage of the Dockerfile) and as the tag suffix that
 # the GitHub workflow pushes to ghcr.io. Single source of truth for both.
-image_version="rocm-${rocm_version}-llama-swap-${llama_swap_version}-llama-${llama_build}-sd-${stable_diffusion_tag}"
+image_version="rocm-${rocm_version}-llama-swap-${llama_swap_version}-llama-${llama_build}-sd-${stable_diffusion_tag}-kokoro-${kokoro_version}"
 echo "$image_version" > image_version.txt
 echo image_version=$image_version
 
@@ -55,8 +58,19 @@ if [[ "$llama_build" == "" || "$llama_build" == "stable_diffusion_tag" ]]; then
 	exit 1
 fi
 
+if [[ "$kokoro_version" == "" || "$kokoro_version" == "null" ]]; then
+	echo "ERROR: Unable to get the latest Kokoro-FastAPI release!"
+	exit 1
+fi
+
 if [[ "$GPU_TARGETS" ]];then
 	extra_args="$extra_args --build-arg GPU_TARGETS=$GPU_TARGETS"
+fi
+
+# Set KOKORO_JAPANESE=true to download the full UniDic dictionary (~550MB) for
+# Japanese voices. Left unset, the Kokoro image default (false) applies.
+if [[ "$KOKORO_JAPANESE" ]];then
+	extra_args="$extra_args --build-arg KOKORO_JAPANESE=$KOKORO_JAPANESE"
 fi
 
 # Stages that FROM a public image (ubuntu:24.04): may force a re-pull
@@ -80,6 +94,13 @@ DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args $base_pull_args
 	--target rocm-base \
 	--build-arg ROCM_VERSION=$rocm_version \
 	-t rocm-base:latest .
+
+# Kokoro-FastAPI is independent of the ROCm stages (FROM ubuntu:24.04), so it may
+# be pulled, but it must be built before the final stage that COPY --from it
+DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args $base_pull_args \
+	--target kokoro \
+	--build-arg kokoro_build=$kokoro_version \
+	-t kokoro:latest .
 
 DOCKER_BUILDKIT=1 PODMAN_BUILDKIT=1 ${CT_TOOL} build $extra_args \
 	--target llama-lxc \
