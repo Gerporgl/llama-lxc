@@ -39,7 +39,7 @@ up to date with every change, and always confirm with the maintainer before comm
       - You can specify a folder to persists their models:
         - ex.: ./setup.sh --setup --backend hip --data-dir /root/data/Strata-data/
         - Important note for Proxmox ZFS!
-          - You may want to set you data volume recordsize to 32K
+          - You may want to set you data volume recordsize to 32K (do this BEFORE running setup.sh and downloading the models! Otherwise, rewrite the entire dataset.)
           - This made a HUGE difference for me since before I had set this to 1M, which was causing large read ovehead (even on a 4 x nvme setup) and it was slow (Strata is using a lot of ramdom access reads)
           - When using `zpool iostat rpool 2 -r`, I was able to see that the optimal size for ISTA IQ3_S (and XXS) was 32K. The default 128K may still work, but is less ideal.
             - ex.: `zfs set recordsize=32K rpool/data/subvol-CTID-disk-1` (replace with correct ctid and data volume)
