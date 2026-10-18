@@ -220,12 +220,20 @@ models:
       out: ["audio"]
       # voices stays unset on purpose: llama-swap then proxies /v1/audio/voices
       # to kokoro and the list always matches the installed voices
+    # llama-swap's default limit is 10 parallel requests and the excess get HTTP
+    # 429 with a JSON body - the web player fetches 20+ ES modules at once, so the
+    # browser reports "NS_ERROR_CORRUPTED_CONTENT" / "disallowed MIME type
+    # (application/json)" and the page half-loads (no text editor, no voices).
+    # Same reason llama-swap's own docs raise the limit for web-app engines.
+    concurrencyLimit: 999
     cmd: >
       ${kokoro}
     # KOKORO_DATA_DIR is where the weights are kept, API_LOG_LEVEL quiets the
     # upstream logs. Any Kokoro-FastAPI setting can be set here.
-    # KOKORO_ROOT_REDIRECT=false drops our "/" -> "web/" redirect and runs
-    # upstream's app as-is (llama-swap's engine UI button then 404s).
+    # KOKORO_ROOT_REDIRECT=false drops our ASGI wrapper and runs upstream's app
+    # as-is (its engine UI button then 404s and the player loses its voice list
+    # behind /upstream/). KOKORO_ROOT_PATH=/some/prefix forces the prefix the
+    # player is told about, if you reverse-proxy it somewhere else.
     env:
       - "KOKORO_DATA_DIR=${env.HOME}/data/kokoro-model"
       - "API_LOG_LEVEL=INFO"

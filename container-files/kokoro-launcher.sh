@@ -95,8 +95,9 @@ fi
 echo "kokoro-server: serving TTS on http://$HOST:$PORT (cpu, model dir $MODEL_DIR)"
 
 # uvicorn must run from the project root: the app package is api.src.main.
-# kokoro_asgi_app is our own wrapper (container-files/kokoro-asgi-app.py), it only
-# adds the "/" -> "web/" redirect llama-swap's engine-UI button needs; set
+# kokoro_asgi_app is our own wrapper (container-files/kokoro-asgi-app.py): it makes
+# Kokoro's web player work behind llama-swap's /upstream/<model>/ prefix (relative
+# redirect for "/" and "/web", plus the real prefix in /web/config). Set
 # KOKORO_ROOT_REDIRECT=false to run upstream's app directly.
 APP="api.src.main:app"
 if [[ "${KOKORO_ROOT_REDIRECT:-true}" == "true" ]]; then

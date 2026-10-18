@@ -217,28 +217,53 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
   mount: llama-swap has no such option (checked `config-schema.json`: per-model keys are cmd, cmdStop, name,
   description, env, proxy, aliases, checkEndpoint, ttl, unloadTimeout, useModelName, filters, metadata,
   concurrencyLimit, sendLoadingState, unlisted, timeouts, disableKeepAlives, compat, capabilities).
-- **Web player through llama-swap's `/upstream/` needs our wrapper.** Kokoro serves the player only under
-  `/web/` and has no route at `/`, while llama-swap's "open engine UI" button is hardcoded to
-  `/upstream/<model>/` (`ui/src/lib/modelUtils.ts` in their repo), so the button 404s. Worse, Kokoro's own
-  `/web` → `/web/` 307 is built from the `Host` header, so through a prefix-stripping proxy it points at the
-  proxy root (live check: `location: http://ai.asqw.net/web/`, and with `http://` even behind TLS). Fix =
-  `container-files/kokoro-asgi-app.py`: for exactly `""`, `/` and `/web` it buffers upstream's answer and only
-  replaces a 404/3xx with a **relative** `Location: web/` (browsers resolve it against the current URL, so it
-  lands on `<prefix>/web/` through llama-swap and `/web/` when hit directly); verified with the real launcher
-  through llama-swap v265. Everything else (including `/health`, `/docs`, `/openapi.json`, `/v1/*`) is passed
-  through untouched, so if upstream ever serves those paths itself we get out of the way.
-- **Do not set `UVICORN_ROOT_PATH` or uvicorn `--root-path`** for the prefixed case. The player does not need
-  it: `web/index.html` references its assets relatively (`styles/*.css`, `src/App.js`) and
-  `web/src/config.js` derives the API prefix from the current URL (`currentPath.split('/web')[0]`) when
-  `/web/config` reports `root_path: ""` — `UVICORN_ROOT_PATH` is only what feeds that JSON field. A real
-  `--root-path` would break the *unprefixed* `/v1/...` calls llama-swap proxies (Starlette strips root_path
-  before matching), so it is unusable here.
+- **The web player through llama-swap's `/upstream/` needs our wrapper, for two
+  independent reasons.** (a) Kokoro serves the player only under `/web/` and has no
+  route at `/`, while llama-swap's "open engine UI" button is hardcoded to
+  `/upstream/<model>/` (`ui/src/lib/modelUtils.ts` in their repo), so the button 404s.
+  Worse, Kokoro's own `/web` → `/web/` 307 is built from the `Host` header, so through a
+  prefix-stripping proxy it points at the proxy root (live check:
+  `location: http://ai.asqw.net/web/`, `http://` even behind TLS). (b) `web/src/config.js`
+  auto-detects the URL prefix and then **overwrites** that guess with the `root_path`
+  field of `GET /web/config`, which upstream fills from `UVICORN_ROOT_PATH` — unset in our
+  image, so it reports `""`, the player starts calling `/v1/audio/voices` at the proxy
+  root (404 from llama-swap's mux), and the UI comes up with no voices and sometimes
+  without its text editor. Fix = `container-files/kokoro-asgi-app.py`: for exactly `""`,
+  `/` and `/web` it buffers upstream's answer and only replaces a 404/3xx with a
+  **relative** `Location: web/` (browsers resolve against the current URL: `<prefix>/web/`
+  through llama-swap, `/web/` when hit directly); and for `GET */web/config` it rewrites
+  `root_path` in the JSON. The prefix cannot come from the ASGI path (llama-swap strips it
+  before proxying), so it is taken from the browser's `Referer` (the player page is always
+  at `<prefix>/web/`), falling back to the request path, with `KOKORO_ROOT_PATH` in the
+  model's `env:` forcing it; a cross-origin/pathless Referer is ignored. Everything else
+  (`/health`, `/docs`, `/openapi.json`, `/v1/*`) passes through untouched, so if upstream
+  serves those paths itself we get out of the way. Verified with the real launcher through
+  llama-swap v265: `root_path` `""` → voices 404; `"/upstream/kokoro-tts"` → 72 voices.
+- **Keep `concurrencyLimit: 999` on the `kokoro-tts` model entry.** llama-swap's internal
+  default is 10 parallel requests *per model* and the surplus get **HTTP 429 with a JSON
+  body** (checked in `internal/config`: "Requests exceeding limit get HTTP 429"). The
+  player fetches ~19 ES modules at once, so some come back as JSON and Firefox reports
+  `NS_ERROR_CORRUPTED_CONTENT` plus "disallowed MIME type (application/json)": the page
+  half-renders, and which files fail varies with timing (devtools open changes the
+  parallelism), which is exactly why the user saw it intermittently. Measured with the
+  real launcher: 11×200 + 8×429 at the default limit, 19/19 `200 application/javascript`
+  at 999. This mirrors the value llama-swap's own docs force for web-app engines
+  (ComfyUI); the cost is nil for an on-demand CPU engine. The same 999 must go into a
+  user's existing `~/data/config.yaml` — prepare.sh never rewrites their file.
+- **Do not set `UVICORN_ROOT_PATH` or uvicorn `--root-path`** for the prefixed case. A real
+  `--root-path` would break the *unprefixed* `/v1/...` calls llama-swap proxies (Starlette
+  strips root_path before matching), so it is unusable here; `UVICORN_ROOT_PATH` alone only
+  feeds the `/web/config` JSON field, which the wrapper already derives per request (and if
+  a user does set it, the wrapper steps aside). The player itself needs no help: it is
+  prefix-aware (`web/src/config.js` splits the current path on `/web`, and its assets are
+  referenced relatively).
 - `upstream.ignorePaths` (llama-swap) defaults to `.*\.(js|json|css|png|gif|jpg|jpeg|ico|txt)$`, so a cold
   `GET /upstream/kokoro-tts/web/styles/base.css` while the model is unloaded answers `409 Conflict` "path
-  matches upstream.ignorePaths". That is harmless in a browser: the document itself (`/`, `/web/`) is not
-  ignored, it starts the model, and the assets then proxy fine (verified 200). Do not "fix" it by emptying
-  `ignorePaths` — listing any pattern **replaces** the default. Also: Kokoro's player holds no websocket and
-  does not poll, so an idle tab does not keep the model loaded (unlike ComfyUI).
+  matches upstream.ignorePaths" (a *different* JSON error than the 429 above: 409 = not started because the
+  path is ignored, 429 = too many concurrent requests). That is harmless in a browser: the document itself
+  (`/`, `/web/`) is not ignored, it starts the model, and the assets then proxy fine (verified 200). Do not
+  "fix" it by emptying `ignorePaths` — listing any pattern **replaces** the default. Also: Kokoro's player
+  holds no websocket and does not poll, so an idle tab does not keep the model loaded (unlike ComfyUI).
 - Kokoro rejects unknown model names with HTTP 400 (accepted: `tts-1`, `tts-1-hd`, `kokoro`,
   `gpt-4o-mini-tts`), hence `useModelName`. Verified end to end with the real `config.default.yaml`: cold
   start ≈15s, unload via `/api/models/unload/<id>` terminates the uvicorn process cleanly. llama-swap also
@@ -321,6 +346,18 @@ their image flattens the repo (`/app/download_model.py`, no `/app/docker/`), so 
 `-v <clone>/docker/scripts/download_model.py:/app/docker/scripts/download_model.py:ro` or the launcher's
 weight check fails. Building only the `kokoro` stage (`--target kokoro`) is far cheaper than the ROCm stages
 (≈10 min, +2GB of local storage), but it is still an image build: ask the user first.
+
+For **player-level** bugs (prefix handling, MIME/concurrency symptoms) there is no real browser in this
+agent sandbox — playwright's firefox needs `libgtk-3.so.0`, which is absent and uninstallable without root —
+so replay the player's own logic in node instead (node has `fetch` built in): re-implement
+`web/src/config.js` `detectRootPath()` + the `/web/config` overwrite + `VoiceService`, send the `Referer` a
+browser would send, then fetch every `web/src/**/*.js` **in parallel** (that is what trips the concurrency
+limit; resolve those specifiers relative to the page URL, not relative to `root_path`). Pair it with
+`curl -w '%{http_code} %{content_type}'` on `/upstream/<id>/`, `/web/config` and `/v1/audio/voices`, and always
+compare a before/after run (two containers, one with the suspect config key removed) — statuses and MIME types
+reproduce the browser's `NS_ERROR_CORRUPTED_CONTENT` complaint exactly. One trap in a hand-written test
+config: an `env:` entry like `PATH=/app/bin:$PATH` does **not** get shell-expanded by llama-swap (the launcher
+died on `mkdir: command not found`); use llama-swap's own `${env.PATH}` macro instead.
 
 Full builds are the expensive part (multi-target ROCm compiles).
 Never delete Dockerfile trimming steps to "make it build faster" — image size and the hipblaslt trim are

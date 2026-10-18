@@ -203,17 +203,25 @@ contains the model name, `/upstream/kokoro-tts/v1` does work (it is the raw pass
 swaps in and out), but it bypasses llama-swap's routing, name rewriting and capability reporting, so prefer
 `/v1` whenever the client lets you set the model name.
 
-The web player through llama-swap needs our launcher, not upstream's entrypoint: Kokoro serves the player
-under `/web/` and has no route at `/`, and its `/web` → `/web/` redirect is built from the `Host` header, so
-through a prefix stripping proxy it escapes to the proxy root. Our `kokoro-server` therefore wraps upstream's
-app (`container-files/kokoro-asgi-app.py`) and answers `/` and `/web` with a *relative* redirect, which
-resolves correctly both through `/upstream/kokoro-tts/` and when the server is reached directly. The player
-itself then finds its prefix on its own (all its assets and API calls are relative), so **do not** set
-`UVICORN_ROOT_PATH` or uvicorn's `--root-path`: that would break the unprefixed `/v1/...` calls llama-swap
-proxies. If you click a static asset (a `.css` or `.js` file) while the model is unloaded, llama-swap answers
-`409` because of its default `upstream.ignorePaths`; opening the player itself always starts the model, so
-the UI loads fine. Use `KOKORO_ROOT_REDIRECT=false` in the model's `env:` to drop our redirect and run
-upstream's app unchanged.
+The web player through llama-swap needs our launcher, not upstream's entrypoint, for two reasons. First, Kokoro
+serves the player under `/web/` and has no route at `/`, and its `/web` → `/web/` redirect is built from the
+`Host` header, so through a prefix stripping proxy it escapes to the proxy root. Second, its `/web/config`
+endpoint reports an empty `root_path`, and the player *overwrites* its own (correct) guess of the URL prefix
+with that value, after which it calls `/v1/audio/voices` at the proxy root: empty voice list, and sometimes no
+text editor either. Our `kokoro-server` therefore wraps upstream's app (`container-files/kokoro-asgi-app.py`)
+to answer `/` and `/web` with a *relative* redirect, and to report the real prefix in `/web/config` (taken from
+the page `Referer`, since llama-swap strips the prefix before proxying; set `KOKORO_ROOT_PATH` in the model's
+`env:` if you put it behind a different prefix yourself). The player finds all its assets on its own, so **do
+not** set `UVICORN_ROOT_PATH` or uvicorn's `--root-path`: that would break the unprefixed `/v1/...` calls
+llama-swap proxies. The model entry also sets `concurrencyLimit: 999`: llama-swap allows only 10 parallel
+requests per model by default and answers the surplus with HTTP 429 JSON bodies, while the player fetches about
+20 ES modules at once — with the default you get `NS_ERROR_CORRUPTED_CONTENT` and "disallowed MIME type
+(application/json)" in the browser console and a half-rendered page (if you edited the config on the volume,
+add that key there too: your file is never rewritten for you). Clicking a single static asset (`.css`, `.js`)
+while the model happens to be unloaded answers `409` instead, because of llama-swap's default
+`upstream.ignorePaths`; opening the player itself always starts the model, so the UI loads fine. Use
+`KOKORO_ROOT_REDIRECT=false` in the model's `env:` to drop the wrapper and run upstream's app exactly as shipped
+(the engine UI button then 404s again and the voice list stays empty behind a proxy prefix).
 
 A few things worth knowing:
 
