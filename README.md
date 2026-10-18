@@ -27,7 +27,7 @@ up to date with every change, and always confirm with the maintainer before comm
     - ROCM binaries: this is the default binaries with the usual names in global path (llama-cli, llama-server, etc.)
     - Vulkan binaries: avaialble as llama-server-vulkan, or other binaries are under /opt/llama/vulkan
   - stable-diffusion.cpp
-    - Same idea as llama.cpp: build form latest release, both ROCM and vulkan
+    - Same idea as llama.cpp: build from latest release, both ROCM and vulkan
   - kokoro fastapi (tts):
     - Package is included, and ready to use. CPU only. Takes a lot of image space (python)... see bellow for more details.
 - Not included, but used by the author daily:
@@ -262,7 +262,7 @@ A few notes for day to day use:
   http://<container-ip>:8080/v1/audio/voices?model=kokoro-tts` lists what is installed. For custom
   voicepacks point `VOICES_DIR` to a folder on the data volume.
 - Like any other model it unloads after `globalTTL` of inactivity. It never competes for vram (CPU only) but
-  holds roughly 0.5GB of system RAM while loaded, so add it to `persistent-group` if you want it warm.
+  will eventually hold roughly around 2.5GB of RAM, give or take, while loaded. Add it to `persistent-group` if you want it warm. You can also override its own ttl if you don't want this to stay too long in ram. The startup is not too long overall, and this is the real advantage of llama-swap (engines are loaded on the fly, so you can manage your resources more efficiently, you don't need to have a 24/7 kokoro container running and using 2.5GB of RAM all the time).
 - Japanese voices are **not** installed by default, they need the full UniDic dictionary (~550MB). Build
   with `KOKORO_JAPANESE=true ./build.sh` if you need them. Every other language works.
 
