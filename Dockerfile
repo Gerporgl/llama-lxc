@@ -322,6 +322,9 @@ RUN ln -s /opt/llama/vulkan/bin/llama-server /usr/local/bin/llama-server-vulkan 
 ADD container-files/llama-swap-launcher.sh /opt/llama/llama-swap/default-llama-swap-launcher
 # Kokoro launcher must be added after the /opt/kokoro copy so it is not overwritten
 ADD --chmod=755 container-files/kokoro-launcher.sh /opt/kokoro/bin/kokoro-server
+# thin ASGI wrapper the launcher uses: adds the "/" -> "web/" redirect that
+# llama-swap's "open engine UI" button needs, without patching upstream files
+ADD container-files/kokoro-asgi-app.py /opt/kokoro/bin/kokoro_asgi_app.py
 RUN ln -s /opt/kokoro/bin/kokoro-server /usr/local/bin/kokoro-server
 
 ADD container-files/prepare-llama.service /etc/systemd/system/

@@ -182,13 +182,47 @@ curl -H 'Content-Type: application/json' \
   http://<container-ip>:8080/v1/audio/speech -o hello.mp3
 ```
 
+### Pointing clients at it
+
+llama-swap routes OpenAI requests by the `model` name **in the request body**, it never mounts model names
+into the URL, so the base URL of any client is llama-swap's own root, and the model name is `kokoro-tts`:
+
+| what | url |
+| --- | --- |
+| speech (OpenAI compatible) | `POST http://<container-ip>:8080/v1/audio/speech` with `"model": "kokoro-tts"` |
+| voice list | `GET http://<container-ip>:8080/v1/audio/voices?model=kokoro-tts` |
+| model listing | `GET http://<container-ip>:8080/v1/models` — advertised as `text->audio`, `capabilities.audio_speech` |
+| its own web player | `http://<container-ip>:8080/upstream/kokoro-tts/` (llama-swap's "open engine UI" button) |
+
+For example in Open WebUI (Settings → Audio): TTS API base URL `https://your-host/v1`, TTS model
+`kokoro-tts`, voice `af_heart`. The default config also declares `tts-1` and `tts-1-hd` as *aliases* of the
+model, so clients that hardcode an OpenAI TTS model name work unchanged as well; drop those aliases if you
+add another engine that should own those names. There is **no** `/<model-name>/v1/...` route: llama-swap
+answers 404 for `http://<container-ip>:8080/kokoro-tts/v1/models`. If a client insists on a base URL that
+contains the model name, `/upstream/kokoro-tts/v1` does work (it is the raw passthrough, the model still
+swaps in and out), but it bypasses llama-swap's routing, name rewriting and capability reporting, so prefer
+`/v1` whenever the client lets you set the model name.
+
+The web player through llama-swap needs our launcher, not upstream's entrypoint: Kokoro serves the player
+under `/web/` and has no route at `/`, and its `/web` → `/web/` redirect is built from the `Host` header, so
+through a prefix stripping proxy it escapes to the proxy root. Our `kokoro-server` therefore wraps upstream's
+app (`container-files/kokoro-asgi-app.py`) and answers `/` and `/web` with a *relative* redirect, which
+resolves correctly both through `/upstream/kokoro-tts/` and when the server is reached directly. The player
+itself then finds its prefix on its own (all its assets and API calls are relative), so **do not** set
+`UVICORN_ROOT_PATH` or uvicorn's `--root-path`: that would break the unprefixed `/v1/...` calls llama-swap
+proxies. If you click a static asset (a `.css` or `.js` file) while the model is unloaded, llama-swap answers
+`409` because of its default `upstream.ignorePaths`; opening the player itself always starts the model, so
+the UI loads fine. Use `KOKORO_ROOT_REDIRECT=false` in the model's `env:` to drop our redirect and run
+upstream's app unchanged.
+
 A few things worth knowing:
 
 - `useModelName: "tts-1"` in that model entry is not decoration: llama-swap rewrites the `model` field of the
   request it forwards, and Kokoro only accepts `tts-1`, `tts-1-hd`, `kokoro` and `gpt-4o-mini-tts`
 - while it runs, the server listens on the port llama-swap assigned (from `startPort`, so 5800 by default)
   and on all interfaces, which means its own web player is reachable at `http://<container-ip>:5800/web/`
-  (note the trailing slash, `/web` only redirects) and its Swagger UI at `/docs`. Pass `--host 127.0.0.1` in
+  (note the trailing slash, `/web` only redirects) and its Swagger UI at `/docs`. Through llama-swap use
+  `/upstream/kokoro-tts/` instead, see above. Pass `--host 127.0.0.1` in
   the macro if you do not want that. Only IPv4 is bound, `localhost` may resolve to IPv6 and fail, use
   `127.0.0.1`
 - the voices are Kokoro's own names, not OpenAI's (`alloy` alone will fail). `curl

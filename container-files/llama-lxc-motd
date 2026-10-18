@@ -17,6 +17,7 @@ echo -e "* \e[1m\e[97mcleanup-hf-cache.sh --dry-run\e[0m preview the model cache
 echo -e "* \e[1m\e[97mwatch amd-smi\e[0m monitor the gpu memory, temperature, etc. using amd-smi"
 echo -e "* \e[1m\e[97mkokoro-server\e[0m run the bundled Kokoro text-to-speech server by hand (cpu only, port 8880). llama-swap also starts it on demand as the model \"kokoro-tts\" on the next free \${PORT}"
 echo -e "* \e[1m\e[97mcurl -H 'Content-Type: application/json' -d '{\"input\":\"hello world\",\"model\":\"kokoro-tts\",\"voice\":\"af_heart\"}' http://localhost:8080/v1/audio/speech -o /tmp/tts.mp3\e[0m generate speech through llama-swap"
+echo -e "* \e[1m\e[97mTTS clients\e[0m point them at http://localhost:8080/v1 and use model \"kokoro-tts\" (\"tts-1\" and \"tts-1-hd\" are aliases of it), voices are listed by \"curl 'http://localhost:8080/v1/audio/voices?model=kokoro-tts'\". Kokoro's own web player is at http://localhost:8080/upstream/kokoro-tts/"
 echo ""
 echo "=============================================================================="
 echo ""

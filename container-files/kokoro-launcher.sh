@@ -51,7 +51,7 @@ fi
 # (/app/...), so every path has to be set here, but each one can still be
 # overridden from the llama-swap model's env: list (or the environment).
 # USE_GPU stays hard-coded: this is the CPU backend, there is no ROCm/CUDA torch.
-export PYTHONPATH="$KOKORO_HOME:$KOKORO_HOME/api"
+export PYTHONPATH="$KOKORO_HOME:$KOKORO_HOME/api:$KOKORO_HOME/bin"
 export PATH="$KOKORO_HOME/.venv/bin:$PATH"
 export USE_GPU=false
 export DEVICE_TYPE="${DEVICE_TYPE:-cpu}"
@@ -94,6 +94,14 @@ fi
 
 echo "kokoro-server: serving TTS on http://$HOST:$PORT (cpu, model dir $MODEL_DIR)"
 
-# uvicorn must run from the project root: the app package is api.src.main
+# uvicorn must run from the project root: the app package is api.src.main.
+# kokoro_asgi_app is our own wrapper (container-files/kokoro-asgi-app.py), it only
+# adds the "/" -> "web/" redirect llama-swap's engine-UI button needs; set
+# KOKORO_ROOT_REDIRECT=false to run upstream's app directly.
+APP="api.src.main:app"
+if [[ "${KOKORO_ROOT_REDIRECT:-true}" == "true" ]]; then
+    APP="kokoro_asgi_app:app"
+fi
+
 cd "$KOKORO_HOME"
-exec "$PY" -m uvicorn api.src.main:app --host "$HOST" --port "$PORT"
+exec "$PY" -m uvicorn "$APP" --host "$HOST" --port "$PORT"

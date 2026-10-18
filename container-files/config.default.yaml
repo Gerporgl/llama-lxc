@@ -189,15 +189,43 @@ models:
 # useModelName is required: llama-swap rewrites the "model" field of the request
 # to that value, and kokoro only accepts tts-1, tts-1-hd, kokoro, gpt-4o-mini-tts.
 # Add this model to persistent-group below if you want it always ready.
+#
+# Three ways to reach it, all on llama-swap's own port (8080 here):
+#   POST /v1/audio/speech       with "model": "kokoro-tts" (or tts-1 / tts-1-hd
+#                               below) - the normal OpenAI route, this is what
+#                               clients should use
+#   GET  /v1/audio/voices?model=kokoro-tts - the voice list, proxied to kokoro
+#   GET  /upstream/kokoro-tts/  - kokoro's own web player UI (llama-swap's "open
+#                               engine UI" button); it lands on /web/ through the
+#                               redirect our kokoro-server launcher adds. The
+#                               /upstream/ path is for that UI only: it bypasses
+#                               llama-swap's model routing, do not point clients
+#                               at /upstream/kokoro-tts/v1 if /v1 works.
+# There is no "/kokoro-tts/..." route: llama-swap routes OpenAI calls by the
+# model name in the request body, it never mounts model names into the URL.
   "kokoro-tts":
     name: "Kokoro TTS"
     useModelName: "tts-1"
     proxy: "${model-url}"
     checkEndpoint: "/health"
+    # so OpenAI clients that hardcode an OpenAI TTS name still get here, and
+    # /v1/models advertises this as a text->audio model (drop them if you have
+    # another engine that should own those names; set includeAliasesInList: true
+    # at the top level to also list the aliases themselves in /v1/models)
+    aliases:
+      - "tts-1"
+      - "tts-1-hd"
+    capabilities:
+      in: ["text"]
+      out: ["audio"]
+      # voices stays unset on purpose: llama-swap then proxies /v1/audio/voices
+      # to kokoro and the list always matches the installed voices
     cmd: >
       ${kokoro}
     # KOKORO_DATA_DIR is where the weights are kept, API_LOG_LEVEL quiets the
     # upstream logs. Any Kokoro-FastAPI setting can be set here.
+    # KOKORO_ROOT_REDIRECT=false drops our "/" -> "web/" redirect and runs
+    # upstream's app as-is (llama-swap's engine UI button then 404s).
     env:
       - "KOKORO_DATA_DIR=${env.HOME}/data/kokoro-model"
       - "API_LOG_LEVEL=INFO"

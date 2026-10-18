@@ -32,7 +32,7 @@ Local testing is done with **podman** (docker is tolerated but unsupported).
 | `Dockerfile` | 5-stage build (see below). Single source of truth for the image. |
 | `build.sh` | Resolves latest upstream versions from GitHub APIs, then builds each stage separately. |
 | `run.sh` / `run_local.sh` / `build_and_run.sh` | Local podman/docker test harness (root password prompt, `./data` bind mount, ports 2222→22, 8888→8080). |
-| `container-files/` | Files injected into the image: systemd units, `prepare.sh`, launchers (`llama-swap-launcher.sh`, `kokoro-launcher.sh` → installed as `/opt/kokoro/bin/kokoro-server`), `config.default.yaml`, `cleanup-hf-cache.sh`, MOTD. |
+| `container-files/` | Files injected into the image: systemd units, `prepare.sh`, launchers (`llama-swap-launcher.sh`, `kokoro-launcher.sh` → installed as `/opt/kokoro/bin/kokoro-server`, plus `kokoro-asgi-app.py` → `/opt/kokoro/bin/kokoro_asgi_app.py`), `config.default.yaml`, `cleanup-hf-cache.sh`, MOTD. |
 | `proxmox-host-scripts/setup-llama-lxc.sh` | Runs **on the Proxmox host**: creates/patches the CT config for GPU passthrough + idmaps, optional ZFS tuning. |
 | `.github/workflows/docker-image.yml` | CI: builds on tag `v*`, weekly schedule (Fri 22:37 UTC), manual dispatch; pushes `:latest` + versioned tag to ghcr.io. |
 
@@ -100,11 +100,16 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
   and must all be overridden), runs upstream `docker/scripts/download_model.py --output $KOKORO_DATA_DIR/v1_0`,
   then `exec python -m uvicorn api.src.main:app` from `$KOKORO_HOME`. `--port`/`--host` flags, and
   `KOKORO_DATA_DIR` (default `/root/data/kokoro-model`) + `KOKORO_HOME` + `DOWNLOAD_MODEL` env overrides.
+  It runs upstream's app through `kokoro_asgi_app:app` (our thin ASGI wrapper, see Kokoro gotchas) unless
+  `KOKORO_ROOT_REDIRECT=false`.
   Weights therefore live on the data volume, never in the image.
 - `config.default.yaml` uses llama-swap **macros** (`llama`, `llama-vulkan`, `sd`, `sd-vulkan`, `kokoro`,
   `models_dir`, `default_ctx`, `default_llama_args`) plus `models:` and `groups:`; llama-swap hot-reloads
   config, no systemctl restart needed. The `kokoro-tts` model **needs** `useModelName: "tts-1"` (see
-  Gotchas). Validate any config edit with `llama-swap -validate -config <file>` (no server started).
+  Gotchas). It also ships `aliases: [tts-1, tts-1-hd]` (so OpenAI-hardcoded clients route here) and
+  `capabilities: {in: [text], out: [audio]}` (llama-swap then advertises `text->audio` +
+  `capabilities.audio_speech` in `/v1/models`; verified on v265). Validate any config edit with
+  `llama-swap -validate -config <file>` (no server started).
 - Inside the CT, useful commands (also in the MOTD `/etc/llama-lxc-motd`):
   `journalctl -u llama-swap -f`, `systemctl restart llama-swap`, `nano ~/data/config.yaml`,
   `hf cache list`, `hf cache prune`, `cleanup-hf-cache.sh`, `watch amd-smi`.
@@ -180,7 +185,10 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
   (never copy a venv across images).
 - Upstream install contract (do not "simplify" it): `uv venv --python 3.12` + `uv sync --frozen --extra cpu
   --no-install-project`, then run with `PYTHONPATH=$KOKORO_HOME` + `python -m uvicorn api.src.main:app` — the
-  project itself is deliberately **not** installed into the venv. Their `pyproject.toml` pins
+  project itself is deliberately **not** installed into the venv. Our launcher instead targets
+  `kokoro_asgi_app:app` (`/opt/kokoro/bin/kokoro_asgi_app.py`, `$KOKORO_HOME/bin` is added to `PYTHONPATH`),
+  which does `from api.src.main import app` — the same import path upstream's own entrypoint uses — and wraps
+  it, so upstream files stay untouched. Their `pyproject.toml` pins
   `torch==2.8.0` / `onnxruntime==1.23.2`, so an unbuildable wheel pin upstream eventually breaks this stage.
 - Upstream defaults are all `/app/...` (`model_dir`, `voices_dir`, `web_player_path`, `temp_file_dir`,
   `use_gpu`, `device_type` — pydantic-settings fields in `api/src/core/config.py`, matched case-insensitively
@@ -199,10 +207,43 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
   the `/dev/tune` endpoint (disabled by default via `enable_inno_tuner`), and its `check_tuner_update()` adds
   up to 3s to every start unless `HF_HUB_OFFLINE=1`. Not worth patching upstream for; set `DOWNLOAD_MODEL=false`
   on a pre-seeded volume to skip all of it.
-- Through llama-swap, `useModelName: "tts-1"` is mandatory: Kokoro rejects unknown model names with HTTP 400
-  (accepted: `tts-1`, `tts-1-hd`, `kokoro`, `gpt-4o-mini-tts`) and llama-swap rewrites the incoming `model`
-  field. Verified end to end with the real `config.default.yaml`: cold start ≈15s, unload via
-  `/api/models/unload` terminates the uvicorn process cleanly.
+- **llama-swap routing (verified on v265, both locally and against the user's live instance): there is no
+  `/<model-name>/...` route at all.** OpenAI calls are routed by the `model` field of the **body** on `/v1/...`;
+  `/kokoro-tts/v1/models` is answered by llama-swap's own mux (404 `404 page not found`, Go text, not Kokoro's
+  `{"detail":...}`). `/upstream/<id>/<path>` is the raw passthrough (it strips that prefix before proxying, so
+  Kokoro sees `/web/...`, and it still swaps the model in); clients *can* use
+  `/upstream/kokoro-tts/v1/audio/speech` with `"model":"tts-1"` but it bypasses llama-swap's name rewriting,
+  aliases and capabilities, so the default config pushes clients to `/v1`. Do not try to add a per-model URL
+  mount: llama-swap has no such option (checked `config-schema.json`: per-model keys are cmd, cmdStop, name,
+  description, env, proxy, aliases, checkEndpoint, ttl, unloadTimeout, useModelName, filters, metadata,
+  concurrencyLimit, sendLoadingState, unlisted, timeouts, disableKeepAlives, compat, capabilities).
+- **Web player through llama-swap's `/upstream/` needs our wrapper.** Kokoro serves the player only under
+  `/web/` and has no route at `/`, while llama-swap's "open engine UI" button is hardcoded to
+  `/upstream/<model>/` (`ui/src/lib/modelUtils.ts` in their repo), so the button 404s. Worse, Kokoro's own
+  `/web` → `/web/` 307 is built from the `Host` header, so through a prefix-stripping proxy it points at the
+  proxy root (live check: `location: http://ai.asqw.net/web/`, and with `http://` even behind TLS). Fix =
+  `container-files/kokoro-asgi-app.py`: for exactly `""`, `/` and `/web` it buffers upstream's answer and only
+  replaces a 404/3xx with a **relative** `Location: web/` (browsers resolve it against the current URL, so it
+  lands on `<prefix>/web/` through llama-swap and `/web/` when hit directly); verified with the real launcher
+  through llama-swap v265. Everything else (including `/health`, `/docs`, `/openapi.json`, `/v1/*`) is passed
+  through untouched, so if upstream ever serves those paths itself we get out of the way.
+- **Do not set `UVICORN_ROOT_PATH` or uvicorn `--root-path`** for the prefixed case. The player does not need
+  it: `web/index.html` references its assets relatively (`styles/*.css`, `src/App.js`) and
+  `web/src/config.js` derives the API prefix from the current URL (`currentPath.split('/web')[0]`) when
+  `/web/config` reports `root_path: ""` — `UVICORN_ROOT_PATH` is only what feeds that JSON field. A real
+  `--root-path` would break the *unprefixed* `/v1/...` calls llama-swap proxies (Starlette strips root_path
+  before matching), so it is unusable here.
+- `upstream.ignorePaths` (llama-swap) defaults to `.*\.(js|json|css|png|gif|jpg|jpeg|ico|txt)$`, so a cold
+  `GET /upstream/kokoro-tts/web/styles/base.css` while the model is unloaded answers `409 Conflict` "path
+  matches upstream.ignorePaths". That is harmless in a browser: the document itself (`/`, `/web/`) is not
+  ignored, it starts the model, and the assets then proxy fine (verified 200). Do not "fix" it by emptying
+  `ignorePaths` — listing any pattern **replaces** the default. Also: Kokoro's player holds no websocket and
+  does not poll, so an idle tab does not keep the model loaded (unlike ComfyUI).
+- Kokoro rejects unknown model names with HTTP 400 (accepted: `tts-1`, `tts-1-hd`, `kokoro`,
+  `gpt-4o-mini-tts`), hence `useModelName`. Verified end to end with the real `config.default.yaml`: cold
+  start ≈15s, unload via `/api/models/unload/<id>` terminates the uvicorn process cleanly. llama-swap also
+  proxies `GET /v1/audio/voices?model=kokoro-tts` to it (leave `capabilities.voices` unset so the list always
+  matches what is installed).
 - espeak is **not** optional and its path differs by distro: `api/src/services/text_processing/phonemizer.py`
   uses `phonemizer` (phonemizer-fork) `EspeakBackend` for the languages misaki does not cover, which needs the
   system `libespeak-ng` (found with `find_library`) → apt `espeak-ng` (pulls `libespeak-ng1` +
@@ -216,6 +257,12 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
   the prefix letter is the language). Legacy v0.19 names with a hyphen (`bf-selena`) are **not** available and
   a hyphen is parsed as a voice-combination separator (`bf-selena` → voice `bf`). Tested working through the
   launcher: en, es, fr, it, pt, hi, zh (each with its own misaki/phonemizer pipeline).
+- **llama-swap resolves the `cmd` executable with its own PATH; a per-model `env:` PATH entry does not affect
+  that lookup** (Go's `exec.Command`/`LookPath` — verified: the model then fails with
+  `executable file not found in $PATH` and every request 500s). Bare macro binaries like `llama-server` and
+  `kokoro-server` therefore work only because `llama-swap.service` has `EnvironmentFile=/etc/environment`
+  (which carries the `/opt/*/bin` PATH line); the `/usr/local/bin` symlinks are the belt-and-braces fallback.
+  Keep both when changing install paths, and never suggest moving a binary by adding a `PATH=` `env:` entry.
 - Kokoro's uvicorn binds **IPv4 only** (`0.0.0.0`): inside the CT use `127.0.0.1`, not `localhost` (which may
   resolve to `::1`). Its OpenAI-compatible surface is under `/v1`, the web player under `/web/` (`/web` only
   307-redirects), Swagger at `/docs` — all reachable at the llama-swap-assigned port (5800+) since it binds
@@ -244,6 +291,7 @@ user builds it on their own machine, or CI builds it from a tag:
 
 ```bash
 for f in $(git ls-files '*.sh') container-files/kokoro-launcher.sh container-files/llama-lxc-motd; do bash -n "$f" || echo "FAIL $f"; done   # syntax check all shell
+python3 -c 'import ast;ast.parse(open("container-files/kokoro-asgi-app.py").read())'   # wrapper module sanity
 python3 -c 'import yaml;yaml.safe_load(open("container-files/config.default.yaml"))'   # YAML sanity
 ./llama-swap -validate -config container-files/config.default.yaml   # llama-swap's own config validator
 ```
@@ -260,14 +308,19 @@ podman build --target <stage> -t <stage>:latest .   # user-run: one stage only
 ./build_and_run.sh                             # user-run: then podman attach llama-lxc
 ```
 
-Kokoro recipe that needs **no image build of ours** (this is how the launcher and the config entry were
-verified): run upstream's `ghcr.io/remsky/kokoro-fastapi-cpu:latest` with
-`-v $PWD/container-files/kokoro-launcher.sh:/app/bin/kokoro-server:ro` (their image already has `/app/bin`
-on PATH), bind-mount a llama-swap release binary and our `config.default.yaml`, then POST
-`/v1/audio/speech` with `{"model":"kokoro-tts",...}` and watch `/running`. Their layout
-(`/app/bin`, `/app/docker/scripts/download_model.py`, `/app/models/v1_0`, `/app/api/src`) matches what the
-launcher expects, so path logic is exercised as-is. Building only the `kokoro` stage (`--target kokoro`)
-is far cheaper than the ROCm stages, but it is still an image build: ask the user first.
+Kokoro recipe that needs **no image build of ours** (this is how the launcher, the config entry and the
+`/upstream/` UI behavior were verified): run upstream's `ghcr.io/remsky/kokoro-fastapi-cpu:latest` with
+`-v $PWD/container-files/kokoro-launcher.sh:/app/bin/kokoro-server:ro` and
+`-v $PWD/container-files/kokoro-asgi-app.py:/app/bin/kokoro_asgi_app.py:ro` (their `/app` layout matches the
+`KOKORO_HOME` our launcher derives, `/app/.venv` included), bind-mount a llama-swap release binary and a
+trimmed copy of `config.default.yaml` whose `kokoro` macro points at `/app/bin/kokoro-server`, then POST
+`/v1/audio/speech` with `{"model":"kokoro-tts",...}`, GET `/upstream/kokoro-tts/` for the redirect, and watch
+`/running`. Two traps when doing that: their image has an **ENTRYPOINT**, so passing `bash -c ...` to
+`podman run` exits 127 — override with `--entrypoint /usr/local/bin/llama-swap` (or `--entrypoint bash`); and
+their image flattens the repo (`/app/download_model.py`, no `/app/docker/`), so also mount
+`-v <clone>/docker/scripts/download_model.py:/app/docker/scripts/download_model.py:ro` or the launcher's
+weight check fails. Building only the `kokoro` stage (`--target kokoro`) is far cheaper than the ROCm stages
+(≈10 min, +2GB of local storage), but it is still an image build: ask the user first.
 
 Full builds are the expensive part (multi-target ROCm compiles).
 Never delete Dockerfile trimming steps to "make it build faster" — image size and the hipblaslt trim are
