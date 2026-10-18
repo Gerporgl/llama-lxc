@@ -10,13 +10,26 @@ globalTTL: 1800
 
 macros:
   "model-url": http://127.0.0.1:${PORT}
-
+# Set kv cache to q8, this is for example purpose, if you have 16GB vram and
+# intend to load some of the model examples bellow (qwen3.8-27b) with the context size
+# specified, you will need this
+# Tune according to your preferences / hardware specs
   "llama": >
     llama-server
     --port ${PORT}
+    -lv 4
+    -fa on
+    -ctk q8_0
+    -ctv q8_0
+    --load-mode none
   "llama-vulkan": >
    llama-server-vulkan
     --port ${PORT}
+    -lv 4
+    -fa on
+    -ctk q8_0
+    -ctv q8_0
+    --load-mode none
   "sd": >
     sd-server
     --listen-port ${PORT}
