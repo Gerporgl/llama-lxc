@@ -10,6 +10,14 @@ Note for contributors (and AI agents working on this repo): see [AGENTS.md](AGEN
 pipeline internals, cross-file invariants and gotchas. Keep **both** `AGENTS.md` and this `README.md`
 up to date with every change, and always confirm with the maintainer before committing or pushing.
 
+## Note: automated github container builds
+- There is a weekly github action that will build new ghcr.io container package (scheduled late Friday / overnight)
+- This image include a default set of ROCM gfx families (see Dockerfile), your GPU may not be there.
+- It is recommended that you build you own image instead, and target specifically your GPU familiy, since the image size will be smaller, and you can get the latest llama.cpp build that you want, instead of waiting once a week.
+- It will take long to compile, but it should still be many times faster than github free runners if you have a 12-16 cores ryzen or equivalent (10-15 minutes build on a local multicore cpu, vs 2 hours+ on github action).
+  - The build.sh and Dockerfile are organized in multi stage local images layers, rebuilding may not require to rebuild all layers (faster)
+- Eventually, we may have to stop the github automated builds anyway if we run out of free runner usage
+
 ## Quick Start
 
 ### Prerequisites
