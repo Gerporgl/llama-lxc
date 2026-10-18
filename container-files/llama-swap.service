@@ -5,6 +5,11 @@ After=prepare-llama.service
 Requires=prepare-llama.service
 
 [Service]
+# Load-bearing, do not remove: llama-swap resolves each model's `cmd` executable with its OWN
+# PATH (Go exec.LookPath), a per-model `env:` PATH entry has no effect on that lookup. The bare
+# binary names in config.yaml macros (llama-server, sd-server, kokoro-server) therefore resolve
+# only because this file carries the /opt/*/bin PATH line; the /usr/local/bin symlinks are the
+# fallback. If a model dies with "executable file not found in $PATH", check here first.
 EnvironmentFile=/etc/environment
 #Environment=HSA_OVERRIDE_GFX_VERSION=10.3.0
 

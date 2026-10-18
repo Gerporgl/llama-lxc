@@ -203,6 +203,14 @@ models:
 #                               at /upstream/kokoro-tts/v1 if /v1 works.
 # There is no "/kokoro-tts/..." route: llama-swap routes OpenAI calls by the
 # model name in the request body, it never mounts model names into the URL.
+# 409 vs 429 when the UI misbehaves: llama-swap's upstream.ignorePaths defaults to
+# .*\.(js|json|css|png|gif|jpg|jpeg|ico|txt)$, so a cold GET /upstream/kokoro-tts/web/... while
+# the model is still unloaded answers 409 "path matches upstream.ignorePaths" (the model was not
+# started because the path is ignored) - a different JSON error than the 429 below (too many
+# concurrent requests). Harmless in a browser: the document itself (/ and /web/) is not ignored,
+# it starts the model, and the assets then proxy fine. Do NOT "fix" it by emptying ignorePaths:
+# listing any pattern replaces the whole default. Kokoro's player holds no websocket and does not
+# poll, so an idle tab does not keep the model loaded (unlike ComfyUI).
   "kokoro-tts":
     name: "Kokoro TTS"
     useModelName: "tts-1"

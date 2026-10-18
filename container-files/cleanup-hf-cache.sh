@@ -29,6 +29,10 @@
 # snapshot symlinks, blobs that no snapshot links anymore, empty repo shells and
 # empty .locks entries. In-progress downloads (*.incomplete) are never touched.
 #
+# Scope: only the Hugging Face cache under ~/data/models. Anything else in ~/data - notably
+# ~/data/kokoro-model (Kokoro TTS weights, downloaded by upstream's own script, not an HF cache)
+# and ~/data/models/sd (stable-diffusion files you place by hand) - is never touched.
+#
 # Usage:
 #   cleanup-hf-cache.sh                  # plan + interactive confirmation
 #   cleanup-hf-cache.sh --dry-run        # plan only, never deletes anything
