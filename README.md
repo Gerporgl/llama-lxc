@@ -21,6 +21,34 @@ up to date with every change, and always confirm with the maintainer before comm
   - Note: Most likely Requires Proxmox VE 9.1.7+ updated to latest kernel and firmware ("no subcription" or "test" may be needed), to properly support ROCm 7.2.x and above on gfx1200 hardware
   - There is no need to install ROCm or anything special on the host for this to work, simply updating to the latest kernel and firmware packages seems sufficient
 
+### Included engines (and optional ones)
+- The image include the following engines:
+  - llama.cpp: build from the latest pre-release
+    - ROCM binaries: this is the default binaries with the usual names in global path (llama-cli, llama-server, etc.)
+    - Vulkan binaries: avaialble as llama-server-vulkan, or other binaries are under /opt/llama/vulkan
+  - stable-diffusion.cpp
+    - Same idea as llama.cpp: build form latest release, both ROCM and vulkan
+  - kokoro fastapi (tts):
+    - Package is included, and ready to use. CPU only. Takes a lot of image space (python)... see bellow for more details.
+- Not included, but used by the author daily:
+  - [Strata](https://github.com/Niko1221/Strata):
+    - A config example can be found in the default config yaml example, or on Strata github / doc repo.
+    - At this point, Strata is not inlcude in the llama-lxc image itself, automated build steps are not clear to me.
+    - However it is fairly easy to install manually in our container, basic packages have been included (git, build-essential, python).
+      - Recommended method: clone their repo under /root/data/Strata (so that it persists after base image update), and use their setup.sh tools. It will download its own python rocm version (our ROCM does not have all the python libraries they require) and create an isolated .venv
+      - You can sepcify a folder to persists their models:
+        - ex.: ./setup.sh --setup --backend hip --data-dir /root/data/Strata-data/
+        - Important note for Proxmox ZFS!
+          - You may want to set you data volume recordsize to 32K
+          - This made a HUGE difference for me since before I had set this to 1M, which was causing large read ovehead (even on a 4 x nvme setup) and it was slow (Strata is using a lot of ramdom access reads)
+          - When using `zpool iostat rpool 2 -r`, I was able to see that the optimal size for ISTA IQ3_S (and XXS) was 32K. The default 128K may still work, but is less ideal.
+            - ex.: `zfs set recordsize=32K rpool/data/subvol-CTID-disk-1` (replace with correct ctid and data volume)
+            - unsloths models seems to read a lot fo 4K chunks, this may be because I don't have enough RAM (64GB)
+      - I often update the base llama-lxc rootfs image independently from Strata without any issue
+    - For now this is the recommended method, they release new version fairly often (every day, sometimes more):
+      - You can ssh to llama.lxc and just run the update.sh script to get their latest version
+    - It works fairly well, and Qwen3.8 Flash seems to be currently the best model for a 64GB RAM and 16VRAM setup and to get a 128K context at 45 tokens/sec or more. Qwen3.8 27B is probaly the next best one, but it may be hard to fit more than 64K context and a decent quality, and it will be slower than if you meet the requirements of Strata (this is the author's own experience, YMMV).
+
 ### Important notes / updates
 
  * Text-to-speech is now included (Kokoro-FastAPI):
