@@ -203,57 +203,25 @@ contains the model name, `/upstream/kokoro-tts/v1` does work (it is the raw pass
 swaps in and out), but it bypasses llama-swap's routing, name rewriting and capability reporting, so prefer
 `/v1` whenever the client lets you set the model name.
 
-The web player through llama-swap needs our launcher, not upstream's entrypoint, for two reasons. First, Kokoro
-serves the player under `/web/` and has no route at `/`, and its `/web` → `/web/` redirect is built from the
-`Host` header, so through a prefix stripping proxy it escapes to the proxy root. Second, its `/web/config`
-endpoint reports an empty `root_path`, and the player *overwrites* its own (correct) guess of the URL prefix
-with that value, after which it calls `/v1/audio/voices` at the proxy root: empty voice list, and sometimes no
-text editor either. Our `kokoro-server` therefore wraps upstream's app (`container-files/kokoro-asgi-app.py`)
-to answer `/` and `/web` with a *relative* redirect, and to report the real prefix in `/web/config` (taken from
-the page `Referer`, since llama-swap strips the prefix before proxying; set `KOKORO_ROOT_PATH` in the model's
-`env:` if you put it behind a different prefix yourself). The player finds all its assets on its own, so **do
-not** set `UVICORN_ROOT_PATH` or uvicorn's `--root-path`: that would break the unprefixed `/v1/...` calls
-llama-swap proxies. The model entry also sets `concurrencyLimit: 999`: llama-swap allows only 10 parallel
-requests per model by default and answers the surplus with HTTP 429 JSON bodies, while the player fetches about
-20 ES modules at once — with the default you get `NS_ERROR_CORRUPTED_CONTENT` and "disallowed MIME type
-(application/json)" in the browser console and a half-rendered page (if you edited the config on the volume,
-add that key there too: your file is never rewritten for you). Clicking a single static asset (`.css`, `.js`)
-while the model happens to be unloaded answers `409` instead, because of llama-swap's default
-`upstream.ignorePaths`; opening the player itself always starts the model, so the UI loads fine. Use
-`KOKORO_ROOT_REDIRECT=false` in the model's `env:` to drop the wrapper and run upstream's app exactly as shipped
-(the engine UI button then 404s again and the voice list stays empty behind a proxy prefix).
+### Configuration
 
-A few things worth knowing:
+The image's [config.default.yaml](container-files/config.default.yaml) is the reference: its `kokoro` macro
+and the `kokoro-tts` model entry show every setting we rely on, with a comment for each one. Your own
+`~/data/config.yaml` is never rewritten for you, so copy new keys there by hand. Anything else is a plain
+environment variable in that model's `env:` list; upstream keeps the full list in
+[docs/configuration.md](https://github.com/remsky/Kokoro-FastAPI/blob/master/docs/configuration.md).
 
-- `useModelName: "tts-1"` in that model entry is not decoration: llama-swap rewrites the `model` field of the
-  request it forwards, and Kokoro only accepts `tts-1`, `tts-1-hd`, `kokoro` and `gpt-4o-mini-tts`
-- while it runs, the server listens on the port llama-swap assigned (from `startPort`, so 5800 by default)
-  and on all interfaces, which means its own web player is reachable at `http://<container-ip>:5800/web/`
-  (note the trailing slash, `/web` only redirects) and its Swagger UI at `/docs`. Through llama-swap use
-  `/upstream/kokoro-tts/` instead, see above. Pass `--host 127.0.0.1` in
-  the macro if you do not want that. Only IPv4 is bound, `localhost` may resolve to IPv6 and fail, use
-  `127.0.0.1`
-- the voices are Kokoro's own names, not OpenAI's (`alloy` alone will fail). `curl
-  "http://<container-ip>:8080/v1/audio/voices?model=kokoro-tts"` lists what is installed through
-  llama-swap. The first letter is the language (`a`/`m` American, `b` British, `e` Spanish, `f` French, `h`
-  Hindi, `i` Italian, `j` Japanese, `p` Portuguese, `z` Mandarin), and a hyphen means "combine these two
-  voices", so old v0.19 names such as `bf-selena` simply do not exist any more. To use custom voicepacks,
-  point `VOICES_DIR` (a per model `env:` entry) to a folder on the data volume
-- every language the bundled voices cover works out of the box except Japanese (see below): tested en, es,
-  fr, it, pt, hi and zh on the CPU backend
-- like any other model it is unloaded after `globalTTL` of inactivity. It stays on CPU so it never competes
-  for vram, but it holds roughly 0.5GB of system RAM while loaded. Add it to `persistent-group` in
-  config.yaml if you would rather keep it warm all the time
-- everything is configured with environment variables (upstream keeps the full list in
-  [docs/configuration.md](https://github.com/remsky/Kokoro-FastAPI/blob/master/docs/configuration.md)),
-  set them in the model's `env:` list. `KOKORO_DATA_DIR` moves the weights, temp and cache folders at once,
-  `MODEL_DIR` / `VOICES_DIR` / `WEB_PLAYER_PATH` / `TEMP_FILE_DIR` override each of them individually,
-  `API_LOG_LEVEL` is set to INFO in the default config (upstream defaults to a much chattier DEBUG), and
-  `DOWNLOAD_MODEL=false` makes the launcher refuse to start unless the weights are already in place (air
-  gapped or pre-seeded setups). `USE_GPU` is deliberately pinned to false and not overridable: this is the
-  CPU backend, there is no ROCm or CUDA torch in the image
+A few notes for day to day use:
+
+- The voices are Kokoro's own names, not OpenAI's (`alloy` alone will fail), and the first letter is the
+  language (`a`/`m` American, `b` British, `e` Spanish, `f` French, `h` Hindi, `i` Italian, `j` Japanese,
+  `p` Portuguese, `z` Mandarin); a hyphen combines two voices. `GET
+  http://<container-ip>:8080/v1/audio/voices?model=kokoro-tts` lists what is installed. For custom
+  voicepacks point `VOICES_DIR` to a folder on the data volume.
+- Like any other model it unloads after `globalTTL` of inactivity. It never competes for vram (CPU only) but
+  holds roughly 0.5GB of system RAM while loaded, so add it to `persistent-group` if you want it warm.
 - Japanese voices are **not** installed by default, they need the full UniDic dictionary (~550MB). Build
-  with `KOKORO_JAPANESE=true ./build.sh` if you need them. Every other language works
+  with `KOKORO_JAPANESE=true ./build.sh` if you need them. Every other language works.
 
 The size cost is roughly 1.1GB on top of the previous image (the CPU torch wheel is the bulk of it), plus
 about 350MB of weights on the data volume (the 327MB model, its config, and 21MB of optional voice tuning

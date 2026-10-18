@@ -174,6 +174,13 @@ Only stages whose `FROM` is a public image (`rocm-dev`, `rocm-base`) may receive
 
 ### Kokoro-FastAPI (text-to-speech)
 
+- **README scope for Kokoro is deliberately minimal**: the README keeps only what the image installs, the
+  curl example, the client-pointing table, and a short "Configuration" subsection that defers to
+  `container-files/config.default.yaml` (which carries the comments for `concurrencyLimit`, `useModelName`,
+  the aliases, `KOKORO_ROOT_REDIRECT` / `KOKORO_ROOT_PATH`). All the design/implementation explanation below
+  lives **here only** — the user asked for that trim, do not re-add web-player/root_path/concurrency
+  prose to the README.
+
 - It is **CPU only by design**: the `cpu` extra installs the CPU torch wheel. Never add ROCm/CUDA torch, and
   never route TTS through a GPU — the point of the layer is to stay off the GPU paths that already crash when
   mixed (see above).
