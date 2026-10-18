@@ -36,7 +36,7 @@ up to date with every change, and always confirm with the maintainer before comm
     - At this point, Strata is not inlcude in the llama-lxc image itself, automated build steps are not clear to me.
     - However it is fairly easy to install manually in our container, basic packages have been included (git, build-essential, python).
       - Recommended method: clone their repo under /root/data/Strata (so that it persists after base image update), and use their setup.sh tools. It will download its own python rocm version (our ROCM does not have all the python libraries they require) and create an isolated .venv
-      - You can sepcify a folder to persists their models:
+      - You can specify a folder to persists their models:
         - ex.: ./setup.sh --setup --backend hip --data-dir /root/data/Strata-data/
         - Important note for Proxmox ZFS!
           - You may want to set you data volume recordsize to 32K
@@ -52,9 +52,24 @@ up to date with every change, and always confirm with the maintainer before comm
 ### Important notes / updates
 
  * Text-to-speech is now included (Kokoro-FastAPI):
-   * A CPU-only text-to-speech server, managed by llama-swap as the `kokoro-tts` model, on the OpenAI compatible `v1/audio/speech` endpoint
-   * Nothing to download or configure by hand, the voice model is fetched on first use into `~/data/kokoro-model` (data volume)
-   * It never touches the GPU, so it does not affect your vram budget. See [Text-to-speech (Kokoro TTS)](#text-to-speech-kokoro-tts)
+  * A CPU-only text-to-speech server, managed by llama-swap as the `kokoro-tts` model, on the OpenAI compatible `v1/audio/speech` endpoint
+  * Nothing to download or configure by hand, the voice model is fetched on first use into `~/data/kokoro-model` (data volume)
+  * It never touches the GPU, so it does not affect your vram budget. See [Text-to-speech (Kokoro TTS)](#text-to-speech-kokoro-tts)
+  * This works well with open-webui if you are hosting it locally. Set the audio api to openai url to "http[s]://yourserver/v1
+    * For tts voice, you can also mix voices, ex.: `am_michael(1.2)+bm_daniel(1)`
+    * The model can be left as tts-1, if using the config example and aliases
+    * Additional params:
+```json
+    {
+      "response_format": "wav",
+      "stream": true,
+      "return_timing": true,
+      "normalization_options": {
+        "unit_normalization": true,
+        "remove_emoji": true
+      }
+    }
+```
 
  * Vulkan + ROCm binaries now included:
    * The container image now include both llama.cpp and stable-diffusion vulkan binaries as well as ROCm 7.2.4
