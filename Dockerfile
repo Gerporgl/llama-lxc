@@ -203,7 +203,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     \
     && rm -Rf /opt/rocm/amdgcn \
     && rm -Rf /opt/rocm/llvm \
-    && rm -Rf /opt/rocm/lib/llvm \
+    #&& rm -Rf /opt/rocm/lib/llvm \
     && rm -Rf /opt/rocm/lib/cmake \
     && rm -Rf /opt/rocm/lib/rocblas \
     # 4b. Trim hipblaslt libraries for gfx families not targeted by GPU_TARGETS
@@ -315,7 +315,7 @@ RUN \
     echo "HF_HUB_CACHE=/root/data/models/" >> /etc/environment && \
     echo "HF_XET_HIGH_PERFORMANCE=1" >> /etc/environment && \
     echo "/opt/rocm/lib" > /etc/ld.so.conf.d/10-rocm.conf && \
-    echo "/opt/rocm/lib/llvm//lib" >> /etc/ld.so.conf.d/10-rocm.conf
+    echo "/opt/rocm/lib/llvm/lib" >> /etc/ld.so.conf.d/10-rocm.conf
 
 RUN ln -s /opt/llama/vulkan/bin/llama-server /usr/local/bin/llama-server-vulkan && \
     ln -s /opt/stable-diffusion/vulkan/bin/sd-server /usr/local/bin/sd-server-vulkan
