@@ -206,7 +206,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && rm -Rf /opt/rocm/llvm \
     && rm -Rf /opt/rocm/lib/llvm \
     && rm -Rf /opt/rocm/lib/cmake \
-    && rm -Rf /opt/rocm/lib/rocblas \
+    # rocblas is needed by stable-diffusion.cpp... but not all models! (ex.: z-image-turbo needs it)
+    #&& rm -Rf /opt/rocm/lib/rocblas \
     # 4b. Trim hipblaslt libraries for gfx families not targeted by GPU_TARGETS
     #     - gfx1200 / gfx1201 are exact targets; gfx9* / gfx11* are families (prefix match)
     && LIB=/opt/rocm/lib/hipblaslt/library \
